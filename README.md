@@ -13,27 +13,27 @@ Core Features
 This chart is suitable for deploying stateless web apps (e.g., nginx-based or custom backends) and can be extended for stateful workloads.
 
 📂 Project Structure
-text
+
 eks-mega-chart/
-├── templates/              # Kubernetes Manifest Templates
-│   ├── _helpers.tpl        # Reusable naming, label, and service account logic
-│   ├── configmap.yaml      # Non-sensitive config data
-│   ├── deployment.yaml     # Core application deployment with security and probes
-│   ├── hpa.yaml            # Horizontal Pod Autoscaler
-│   ├── ingress.yaml        # AWS ALB Ingress configuration
-│   ├── pdb.yaml            # Pod Disruption Budget for HA
-│   ├── secret.yaml         # Sensitive data secrets
-│   ├── service.yaml        # Service exposure
-│   └── serviceaccount.yaml # ServiceAccount with optional IRSA annotations
-├── .github/                # CI/CD workflows
-│   └── workflows/          
-│       └── deploy.yml      # GitHub Actions for lint, test, deploy
-├── .gitignore              # Ignore local files and secrets
-├── Chart.yaml              # Chart metadata and versioning
-├── LICENSE                 # e.g., MIT License
-├── README.md               # This file
-├── values.yaml             # Default (Dev) configuration
-└── values-prod.yaml        # Production overrides
+├── templates/ # Kubernetes Manifest Templates
+│ ├── _helpers.tpl # Reusable naming, label, and ServiceAccount logic
+│ ├── configmap.yaml # Non-sensitive config data
+│ ├── deployment.yaml # Core application deployment with security and probes
+│ ├── hpa.yaml # Horizontal Pod Autoscaler
+│ ├── ingress.yaml # AWS ALB Ingress configuration
+│ ├── pdb.yaml # Pod Disruption Budget for HA
+│ ├── secret.yaml # Sensitive data secrets
+│ ├── service.yaml # Service exposure
+│ └── serviceaccount.yaml # ServiceAccount with optional IRSA annotations
+├── .github/ # CI/CD workflows
+│ └── workflows/
+│ └── deploy.yml # GitHub Actions for lint, test, deploy
+├── .gitignore # Ignore local files and secrets
+├── Chart.yaml # Chart metadata and versioning
+├── LICENSE # e.g., MIT License
+├── README.md # This file
+├── values.yaml # Default (Dev) configuration
+└── values-prod.yaml # Production configuration overrides
 
 🚀 Getting Started
 Prerequisites
