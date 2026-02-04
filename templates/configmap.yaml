@@ -1,0 +1,10 @@
+{{- if .Values.configData }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "eks-mega-chart.fullname" . }}-config
+  labels:
+    {{- include "eks-mega-chart.labels" . | nindent 4 }}
+data:
+  {{- toYaml .Values.configData | nindent 2 }}
+{{- end }}

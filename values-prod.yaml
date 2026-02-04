@@ -1,0 +1,41 @@
+# Production overrides
+replicaCount: 3
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 70  # Add for balanced scaling
+
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/xxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # Add your ACM ARN
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'  # Enforce HTTPS
+    alb.ingress.kubernetes.io/ssl-redirect-443: 'true'  # Redirect HTTP to HTTPS
+  hosts:
+    - host: api.mycompany.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+configData:
+  DB_HOSTNAME: "prod-db-rds.amazonaws.com"
+  LOG_LEVEL: "warn"
+  ENABLE_FEATURE_X: "true"
+
+secretData:
+  DB_PASSWORD: "{{ .Values.secretData.DB_PASSWORD }}"  # Use Helm overrides or external; avoid hardcoding
+  API_KEY: "{{ .Values.secretData.API_KEY }}"  # For public repo, use placeholders

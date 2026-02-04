@@ -1,0 +1,14 @@
+apiVersion: v2
+name: eks-mega-chart
+description: A production-ready Helm chart for deploying applications on Amazon EKS
+type: application
+version: 1.0.0  # Semantic versioning: bump for changes (e.g., 1.0.1 for fixes)
+appVersion: "1.25.4"  # Update to latest stable if using nginx; otherwise, match your app
+keywords:
+  - eks
+  - aws
+  - kubernetes
+home: https://github.com/Yousuf-Hossain10/eks-mega-chart.git  # Link to your repo
+maintainers:
+  - name: Mohammad Yousuf Hossain Anik
+    email: mdyousufhossainanik10@gmail.com  # Optional; use if public

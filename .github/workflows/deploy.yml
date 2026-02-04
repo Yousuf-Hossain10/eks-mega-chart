@@ -1,0 +1,39 @@
+name: EKS Helm Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4  # Updated to latest version for better security/features
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4  # Updated to latest version
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}  # Use repo variable for region (set in GitHub settings)
+
+      - name: Update Kubeconfig
+        run: aws eks update-kubeconfig --name ${{ vars.EKS_CLUSTER_NAME }} --region ${{ vars.AWS_REGION }}  # Use variables for cluster/region
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4  # Updated to latest version
+
+      - name: Lint Helm Chart
+        run: helm lint ./eks-mega-chart  # Added lint step for validation
+
+      - name: Deploy Helm Chart
+        run: |
+          helm upgrade --install my-app-prod ./eks-mega-chart \
+            --namespace production \
+            --create-namespace \
+            -f ./eks-mega-chart/values-prod.yaml \
+            --set image.tag=${{ github.sha }} \
+            --atomic  # Added for automatic rollback on failure
+            --timeout 5m0s  # Added timeout to prevent hanging deployments

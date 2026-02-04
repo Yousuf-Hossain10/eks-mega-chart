@@ -1,0 +1,102 @@
+# Default values for eks-mega-chart.
+
+replicaCount: 1
+
+image:
+  repository: yourorg/myapp  # Change from nginx to your actual app; nginx doesn't need DB configs
+  pullPolicy: IfNotPresent
+  tag: "latest"  # Pin to a specific version (e.g., v1.0.0) for prod; avoid 'latest'
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}  # Add IRSA annotations if app needs AWS permissions (e.g., for S3 access)
+  name:
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  limits:
+    cpu: 200m  # Add minimal limits for dev to prevent resource starvation
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Liveness/Readiness probes ensure EKS knows if your app is frozen
+livenessProbe:
+  httpGet:
+    path: /healthz  # Use a proper health endpoint if app has one; / for basic
+    port: http
+  initialDelaySeconds: 30  # Give time for app startup
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready  # Customize if app has a readiness endpoint
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80  # Uncomment and enable for memory-based scaling
+
+ingress:
+  enabled: false
+  className: "alb"
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    # alb.ingress.kubernetes.io/group.name: my-app-group  # Keep optional
+    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'  # For TLS-only
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - chart-example.local
+      secretName: chart-example-tls  # Or use ACM via annotation in prod
+
+# Security best practices
+podSecurityContext:
+  fsGroup: 1000  # Example: for volume permissions
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop: ["ALL"]
+
+# Placement for EKS (e.g., spread across AZs)
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Environment variables (add if templates use them)
+env: []  # e.g., - name: ENV_VAR, value: "value"
+envFrom: []  # Mount configMap/secret as env
+
+# Keep configData and secretData, but document
+configData:
+  DB_HOSTNAME: "dev-db.cluster.internal"
+  LOG_LEVEL: "debug"
+  ENABLE_FEATURE_X: "true"
+
+secretData:
+  DB_PASSWORD: "fake-dev-password"  # Use fake values; never commit real ones
+  API_KEY: "fake-dev-key"
