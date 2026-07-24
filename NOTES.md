@@ -267,3 +267,43 @@ between what a values schema can and cannot catch — see the writeup below
 and `values-invalid-replicas-demo.yaml` for the demonstration.
 
 ---
+
+## Bug: same-line `#` comments leaked into rendered YAML in four templates
+
+**Symptom:** `helm lint .` had been printing this warning since the very
+first lint run of this whole session, unaddressed:
+```
+[WARNING] templates/secret.yaml: document starts with an illegal indent: "  # Conditional to skip if no secrets", which may cause parsing problems
+```
+Grepping rendered output for `#` showed it wasn't just that one line —
+`secret.yaml`, `service.yaml`, `deployment.yaml`, and `hpa.yaml` all had
+comments sitting on the same line as a `{{- if }}`/`{{- with }}` action or
+right after a value substitution. Since only the `{{ }}` delimiters are
+template syntax, everything else on that line — including a trailing `#
+comment` — is literal text that gets emitted as part of the rendered
+output. In the worst case this produced a comment attached to a
+completely unrelated line: with `service.annotations` set, the rendered
+output showed `app.kubernetes.io/managed-by: Helm  # Add for custom
+annotations (e.g., ALB health)` — a comment about annotations, physically
+attached to an unrelated label three lines away from where the comment
+was actually written, because of how the `{{- with }}` block's whitespace
+trimming interacted with the following line.
+
+**Cause:** Comments written as `{{- if X }}  # explanation` instead of
+`{{/* explanation */}}`. The former is two separate things (a template
+action, then literal text) that only look like one line in the source.
+
+**Fix:** Removed the comments that were self-evident from the code next
+to them. Kept two that carried real information, moved to proper
+`{{/* ... */}}` block comments so they can't leak: why `containerPort`
+falls back to `80` in `deployment.yaml`, and the example shape of
+`autoscaling.behavior` in `hpa.yaml`.
+
+**What it taught me:** the lint warning had been sitting there, ignored,
+through every single `helm lint` run this whole session — it's easy to
+stop reading a warning once it becomes background noise. Also: `helm
+template` output can look clean in a quick skim and still have comment
+text landed on the wrong line entirely; grepping the rendered output for
+`#` line-by-line is a better check than eyeballing it.
+
+---

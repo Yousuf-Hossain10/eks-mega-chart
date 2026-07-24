@@ -4,7 +4,7 @@ metadata:
   name: {{ include "eks-mega-chart.fullname" . }}
   labels:
     {{- include "eks-mega-chart.labels" . | nindent 4 }}
-  {{- with .Values.service.annotations }}  # Add for custom annotations (e.g., ALB health)
+  {{- with .Values.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -15,7 +15,7 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
-      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}  # Optional for NodePort
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
       nodePort: {{ .Values.service.nodePort }}
       {{- end }}
   selector:

@@ -32,8 +32,9 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
     {{- end }}
-  {{- if .Values.autoscaling.behavior }}  # Add optional scaling behavior
+  {{/* Example shape: behavior: { scaleDown: { stabilizationWindowSeconds: 300 } } */}}
+  {{- if .Values.autoscaling.behavior }}
   behavior:
     {{- toYaml .Values.autoscaling.behavior | nindent 4 }}
-  {{- end }}  # Example in values: behavior: { scaleDown: { stabilizationWindowSeconds: 300 } }
+  {{- end }}
 {{- end }}
