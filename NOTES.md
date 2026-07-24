@@ -181,3 +181,34 @@ didn't exist. Worth checking that ignore files are actually named correctly,
 not just present.
 
 ---
+
+## Surprise: the `/tmp` emptyDir for read-only root filesystem was already half-written, but wired to a condition that could never be satisfied
+
+**Symptom:** While implementing `readOnlyRootFilesystem: true`, found that
+`deployment.yaml` already had code to mount an `emptyDir` at `/tmp` — but it
+was gated behind `{{- if .Values.volumeMounts }}`, and `.Values.volumeMounts`
+defaults to `[]` in every environment this chart ships with. So even before
+today, if someone had simply flipped `readOnlyRootFilesystem: true` in
+values without also editing the template, the tmp mount still would not
+have appeared — the container would have started with a read-only root and
+no writable `/tmp`, and anything that writes temp files (which is most
+runtimes) would have failed at runtime, not at render time.
+
+**Cause:** The `/tmp` mount was written as if it belonged to the *optional
+extra volumes* feature (`.Values.volumeMounts`/`.Values.volumes`) instead of
+being tied to the thing that actually requires it — `readOnlyRootFilesystem`.
+
+**Fix:** Re-gated both the `volumeMounts` and `volumes` blocks in
+`deployment.yaml` on `.Values.securityContext.readOnlyRootFilesystem`
+directly (with `.Values.volumeMounts`/`.Values.volumes` still supported
+alongside it for genuinely optional extra volumes). Now the tmp mount
+appears whenever the read-only root filesystem flag is on, independent of
+whether the user configured any other volumes.
+
+**What it taught me:** Half-implemented security features are worse than
+no feature at all, because they look done in a code review. `helm
+lint`/`helm template` couldn't have caught this either — nothing about it
+is a syntax error, it's a wiring mistake between two independent
+conditions that happened to both default to "off."
+
+---
