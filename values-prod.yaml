@@ -39,6 +39,15 @@ configData:
   LOG_LEVEL: "warn"
   ENABLE_FEATURE_X: "true"
 
-secretData:
-  DB_PASSWORD: "{{ .Values.secretData.DB_PASSWORD }}"  # Use Helm overrides or external; avoid hardcoding
-  API_KEY: "{{ .Values.secretData.API_KEY }}"  # For public repo, use placeholders
+# secretData is intentionally unset (not {}) in prod. Values files are
+# plain YAML, not templated - "{{ .Values.secretData.DB_PASSWORD }}" used
+# to sit here as a literal string, which Helm would base64-encode
+# verbatim into the Secret. There was never a real secret behind it.
+#
+# `null` (not {}) is required to actually clear the fake dev placeholders
+# inherited from values.yaml on merge - an empty map merges and keeps
+# them, null unsets the key entirely. See docs/secrets-management.md for
+# the real options for getting prod secrets into this chart; none of them
+# are implemented yet, so right now a prod install renders no Secret and
+# no custom env vars from secretData at all - an honest gap, not a fake one.
+secretData: null

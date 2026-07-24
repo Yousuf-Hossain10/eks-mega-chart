@@ -335,3 +335,37 @@ them in the schema as optional-but-unused properties would have kept
 describing a contract the chart doesn't actually have.
 
 ---
+
+## Bug: values-prod.yaml's DB_PASSWORD was a literal, unrendered template string
+
+**Symptom:** `values-prod.yaml` had
+`DB_PASSWORD: "{{ .Values.secretData.DB_PASSWORD }}"`. This was already
+in CLAUDE.md's "Current known state" checklist before this session
+started; confirmed and fixed here. Values files aren't templated by
+Helm — that string was the literal 44 characters, never evaluated,
+base64-encoded verbatim into the rendered `Secret`. There was never a
+real password behind it, in this file or anywhere else in the repo.
+
+**Also found while fixing it:** the obvious-looking fix,
+`secretData: {}`, does not work. Confirmed by testing directly: an empty
+map in an overlay merges with (and therefore doesn't clear) the fake dev
+placeholders inherited from the base `values.yaml` — the same Helm
+merge-semantics gotcha already documented earlier in this file for the
+`envFrom` bug. `secretData: null` is what's actually required to unset
+an inherited map entirely. Verified: with `null`, zero `Secret` resources
+render for prod; with `{}`, the dev fake `DB_PASSWORD`/`API_KEY` would
+have silently carried through into the "prod" render.
+
+**Fix:** Set `secretData: null` in `values-prod.yaml`. A prod install
+today renders no `Secret` and no secret-derived env vars — an honest
+gap, not a fake one. Wrote `docs/secrets-management.md` laying out the
+real options (External Secrets Operator, Sealed Secrets, SOPS, `--set`
+from CI) with trade-offs, undecided on purpose.
+
+**What it taught me:** a "fix" that just makes the symptom disappear
+(`{}`) can be silently wrong in a way that's worse than the obvious bug —
+the templated-string version was at least visibly broken; an empty map
+would have looked correct while quietly deploying fake dev credentials
+under a `prod` label.
+
+---
