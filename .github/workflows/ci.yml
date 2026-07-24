@@ -1,0 +1,136 @@
+name: CI
+
+# Validation only. This workflow never touches AWS or a cluster - no
+# OIDC role assumption, no kubeconfig, no credentials of any kind. It
+# proves the chart renders correctly; deploy.yml is the only workflow
+# that ships anything anywhere, and it's a separate file on purpose.
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+env:
+  # Pinned deliberately. helm/helm's "latest" tag is now a v4 release,
+  # and Helm v4 plugin manifests use a schema (platformHooks) that a v3
+  # Helm binary can't even parse - discovered while verifying this
+  # workflow locally, not assumed. Pinning avoids CI silently moving to
+  # an untested major version.
+  HELM_VERSION: v3.17.3
+  KUBECONFORM_VERSION: v0.8.0
+  # Newest helm-unittest release still compatible with Helm v3's plugin
+  # loader - v1.1.x's plugin.yaml uses the v4-only platformHooks field
+  # and fails to install under v3. Verified locally before pinning.
+  HELM_UNITTEST_VERSION: v1.0.3
+
+jobs:
+  validate:
+    name: validate (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # One leg per environment values file. See the explanation at the
+      # bottom of this file (and the PR/commit message) for why this is
+      # a matrix and not "test dev, assume staging and prod follow."
+      matrix:
+        include:
+          - environment: dev
+            values_file: ""
+          - environment: staging
+            values_file: values-staging.yaml
+          - environment: prod
+            values_file: values-prod.yaml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL -o kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf kubeconform.tar.gz kubeconform
+          chmod +x kubeconform
+          sudo mv kubeconform /usr/local/bin/kubeconform
+
+      - name: helm lint
+        run: |
+          if [ -n "${{ matrix.values_file }}" ]; then
+            helm lint . -f "${{ matrix.values_file }}" --set image.tag="${GITHUB_SHA}"
+          else
+            helm lint . --set image.tag="${GITHUB_SHA}"
+          fi
+
+      - name: helm template
+        run: |
+          if [ -n "${{ matrix.values_file }}" ]; then
+            helm template ci . -f "${{ matrix.values_file }}" --set image.tag="${GITHUB_SHA}" > "rendered-${{ matrix.environment }}.yaml"
+          else
+            helm template ci . --set image.tag="${GITHUB_SHA}" > "rendered-${{ matrix.environment }}.yaml"
+          fi
+
+      - name: kubeconform (strict)
+        run: kubeconform -strict -summary "rendered-${{ matrix.environment }}.yaml"
+
+  schema-negative-tests:
+    name: values.schema.json rejects known-bad input
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      # These two files exist specifically to be rejected. If either one
+      # renders successfully, the validation this whole workflow exists
+      # to enforce has silently broken - so a passing render here is the
+      # failure, not the success.
+      - name: tests/invalid-demo.yaml must be rejected by values.schema.json
+        run: |
+          if helm template ci . -f tests/invalid-demo.yaml --set image.tag="${GITHUB_SHA}" > /dev/null 2>&1; then
+            echo "::error::tests/invalid-demo.yaml rendered successfully - values.schema.json failed to reject it."
+            exit 1
+          fi
+          echo "Correctly rejected by the schema."
+
+      - name: tests/invalid-replicas-demo.yaml must be rejected by the hpa.yaml fail guard
+        run: |
+          if helm template ci . -f tests/invalid-replicas-demo.yaml --set image.tag="${GITHUB_SHA}" > /dev/null 2>&1; then
+            echo "::error::tests/invalid-replicas-demo.yaml rendered successfully - the autoscaling.maxReplicas >= minReplicas guard in templates/hpa.yaml failed to catch it."
+            exit 1
+          fi
+          echo "Correctly rejected by the template guard."
+
+  unittest:
+    name: helm unittest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version "${HELM_UNITTEST_VERSION}"
+
+      # No test suites exist yet (tests/ currently holds schema-validation
+      # fixtures, not unittest specs - see the note in NOTES.md about that
+      # shared directory). This job exists so the job itself, the plugin
+      # install, and the runner all go green now, before any real
+      # assertions are added, so the next prompt's tests land on a known-
+      # working harness instead of debugging the harness and the tests
+      # at the same time.
+      - name: Run helm unittest
+        run: helm unittest .

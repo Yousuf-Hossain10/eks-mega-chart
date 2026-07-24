@@ -22,3 +22,7 @@ Thumbs.db
 # Local override values some editors may create - not part of the chart contract
 values.local.yaml
 values-*.local.yaml
+
+# Scratch output from running `helm template ... > rendered-<env>.yaml`
+# locally, the same way ci.yml does - never meant to be committed
+rendered-*.yaml

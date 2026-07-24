@@ -1,0 +1,47 @@
+# Staging overrides
+#
+# NOTE: this file did not exist before CI needed a real third environment
+# to matrix over. It's a reasonable middle ground between values.yaml
+# (dev) and values-prod.yaml, not a decision that's been argued out the
+# way ADR-0002 was - revisit the specific numbers if staging has actual
+# requirements (traffic shape, cost ceiling) beyond "somewhere between
+# dev and prod."
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: 150m
+    memory: 384Mi
+  limits:
+    memory: 384Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 75
+
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+  hosts:
+    - host: staging-api.mycompany.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+topologySpreadConstraints:
+  whenUnsatisfiable: DoNotSchedule
+
+configData:
+  DB_HOSTNAME: "staging-db-rds.amazonaws.com"
+  LOG_LEVEL: "info"
+  ENABLE_FEATURE_X: "true"
+
+# Same reasoning as values-prod.yaml: null (not {}) actually unsets the
+# fake dev placeholders on merge. See docs/secrets-management.md.
+secretData: null

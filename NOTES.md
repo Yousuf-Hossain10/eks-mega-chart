@@ -441,3 +441,54 @@ actively points the next reader toward "fixing" something that isn't
 broken, or worse, toward believing a working feature doesn't exist.
 
 ---
+
+## ci.yml: two things found while building it, both verified before writing YAML
+
+**No `values-staging.yaml` existed.** CI was asked to matrix over dev/
+staging/prod, but this repo only ever had `values.yaml` (dev) and
+`values-prod.yaml`. Confirmed via `git ls-files` before assuming
+anything. Created `values-staging.yaml` as a reasonable midpoint between
+the two - it's flagged in its own header comment as not having been
+argued out the way ADR-0002 was, since nobody's actually stated
+staging's real requirements yet.
+
+**`helm/helm`'s "latest" release is now a v4 tag, and Helm v4 plugin
+manifests aren't loadable by a v3 binary.** Tried installing the
+`helm-unittest` plugin locally before writing the unittest job, and it
+failed immediately: `unknown field "platformHooks"` - that field is part
+of a plugin manifest schema Helm v3's plugin loader doesn't recognize at
+all. This would have been a real trap: `azure/setup-helm@v4` (the GitHub
+Action) with no `version` pinned installs whatever Helm currently calls
+"latest," which today means v4, an untested major version for this whole
+chart. Pinned `HELM_VERSION: v3.17.3` explicitly in `ci.yml` rather than
+finding this out the first time CI actually ran. Also had to pin
+`helm-unittest` to `v1.0.3` - `v1.1.x` ships the incompatible
+`platformHooks` manifest; `v1.0.3` installs and runs cleanly under Helm
+v3, verified locally (`helm unittest .` exits 0 with zero test suites,
+confirming the "job exists and goes green with no tests yet" requirement
+is actually true, not assumed).
+
+**Confirmed kubeconform earns its place, not just added it on faith.**
+Injected a typo'd `podSecurityContext.fsGroupp` (extra "p") via a values
+override. `values.schema.json` doesn't catch it - `podSecurityContext` is
+typed as a loose `{"type": "object"}` with no `additionalProperties`
+restriction, so any key sails through. `helm lint`/`helm template` both
+succeed. Only `kubeconform -strict`, validating against the real
+Kubernetes OpenAPI schema, catches it: `additional properties 'fsGroupp'
+not allowed`. This is the same class of typo that caused the original
+`.Values.pdb.enabled` bug this whole project started from - kubeconform
+is the layer that would have caught that class of mistake, which is
+exactly the gap it's there to close.
+
+**Simulated every job's exact shell logic locally before trusting the
+YAML** - the matrix's if/else branching for all three environments, both
+negative-test assertions, and the unittest job's plugin install and run
+- using the same pinned Helm/kubeconform/plugin versions the workflow
+pins. All of it ran clean. `helm lint`/`helm template`/`kubeconform` exit
+1 on real failure, confirmed directly (an early exit-code check earlier
+in this session had been silently wrong - a stray `echo;` before
+`echo "EXIT: $?"` was resetting `$?` to 0 - worth remembering that
+"exit code" checks need to read `$?` immediately after the command in
+question, nothing in between).
+
+---
