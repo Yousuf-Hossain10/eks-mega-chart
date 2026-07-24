@@ -80,7 +80,8 @@ autoscaling:
   minReplicas: 1
   maxReplicas: 5
   targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80  # Uncomment and enable for memory-based scaling
+  # HPA v2 scales on whichever metric needs more replicas - active alongside CPU, not a fallback.
+  targetMemoryUtilizationPercentage: 80
 
 ingress:
   enabled: false

@@ -42,6 +42,38 @@ graphs and only show up as request latency or, in Kubernetes, as the
 doesn't protect the node from the container; it protects nothing and
 costs latency.
 
+### The specific misconception this ADR exists to correct
+
+Before this ADR, `values.yaml` had:
+
+```yaml
+limits:
+  cpu: 200m  # Add minimal limits for dev to prevent resource starvation
+```
+
+That comment has the mechanism exactly backwards, and it's a common
+enough belief to name directly: **a CPU limit does not prevent
+starvation. A CPU request does.**
+
+"Starvation" means *this* container not getting enough CPU because other
+containers on the node are competing for it. The thing that protects a
+container from starvation under contention is its cgroup shares — set by
+the **request** — which the kernel uses to divide CPU time proportionally
+once the node is fully busy (see below). A **limit** does the opposite of
+protecting a container: it caps how much CPU *this same container* is
+allowed to use, even when the node is idle and nobody is competing for
+anything. Setting a limit "to prevent starvation" doesn't defend this
+container against its neighbors — it just adds a ceiling that can throttle
+this container in isolation, for no contention-related reason at all.
+
+If the goal is "protect this workload from noisy neighbors," the request
+is the mechanism, and it's already there regardless of whether a limit
+exists. If the goal is "stop this workload from consuming too much of the
+node," that's a real, different goal — the counter-argument section below
+covers it honestly — but it should be named as what it actually is
+(constraining this container), not described as protection this
+container receives.
+
 ### What a CPU request actually guarantees
 
 A CPU request isn't a reservation of dedicated cores. It sets the

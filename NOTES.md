@@ -403,3 +403,41 @@ now on record. A schema can validate shape; it can't tell you that your
 defaults contradict a decision you haven't written down yet.
 
 ---
+
+## Follow-up: named the exact misconception ADR-0002 was meant to kill
+
+**What happened:** The `limits.cpu` comment that used to be in
+`values.yaml` - "Add minimal limits for dev to prevent resource
+starvation" - had the mechanism backwards, and it's a common enough
+belief to be worth naming explicitly rather than just fixing the value
+and moving on. A CPU *limit* doesn't protect a container from
+starvation; it caps what that same container can use, including when
+nothing is contending for anything. The thing that actually protects
+against starvation under contention is the *request* (cgroup shares),
+which exists independent of whether a limit is also set. Added a
+dedicated section to ADR-0002 naming this directly, quoting the original
+backwards comment as the concrete example, so the next person who
+reaches for "add a limit to protect against starvation" sees exactly why
+that's the wrong tool before they add one back.
+
+**Separately, confirmed memory-based autoscaling is not half-configured.**
+`targetMemoryUtilizationPercentage: 80` in `values.yaml` had a comment
+reading "Uncomment and enable for memory-based scaling" while the line
+itself was already active, uncommented, set to a real value. Checked
+`templates/hpa.yaml`: it conditionally renders a memory `Resource`
+metric whenever `.Values.autoscaling.targetMemoryUtilizationPercentage`
+is set, alongside the CPU metric (HPA v2 scales on whichever metric
+needs more replicas). Checked the container has a `resources.requests.memory`
+set (from the ADR-0002 fix), which is required for a memory utilization
+percentage to mean anything at runtime. Rendered the HPA with
+`autoscaling.enabled=true` and confirmed both metrics actually appear.
+It's fully wired, not half-built - the comment was just stale. Fixed the
+comment in both `values.yaml` and `values-prod.yaml` instead of removing
+a feature that already works.
+
+**What it taught me:** a stale comment claiming something is disabled
+when it's actually active is arguably worse than no comment at all - it
+actively points the next reader toward "fixing" something that isn't
+broken, or worse, toward believing a working feature doesn't exist.
+
+---
