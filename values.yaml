@@ -48,6 +48,17 @@ readinessProbe:
   successThreshold: 1
   failureThreshold: 3
 
+# Runs before liveness/readiness even start counting, so a slow-starting
+# app isn't killed by liveness before it's had a chance to come up.
+# 30 * 10s = 5 minutes of startup budget before Kubernetes gives up.
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 30
+
 autoscaling:
   enabled: false
   minReplicas: 1
