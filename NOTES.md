@@ -307,3 +307,31 @@ text landed on the wrong line entirely; grepping the rendered output for
 `#` line-by-line is a better check than eyeballing it.
 
 ---
+
+## Cleanup: purged nginx scaffold leftovers and two dead values keys
+
+**What was there:** `Chart.yaml`'s `appVersion: "1.25.4"` was nginx's own
+version number, left over from whatever scaffold this chart started as -
+not this project's version, not tied to any real app. `values.yaml`'s
+`image.repository` comment said "Change from nginx to your actual app"
+even though the repository value itself had already been changed away
+from nginx; the comment was stale. `values.yaml` also had `env: []` and
+`envFrom: []` keys with comments implying templates would use them -
+grepped `templates/` for `.Values.env` and `.Values.envFrom` and found
+zero references. Both keys were pure scaffold noise, never wired to
+anything.
+
+**Fix:** Changed `appVersion` to a generic `0.1.0` placeholder with a
+comment noting real deploys always set `image.tag` explicitly (enforced
+by `values.schema.json`), so `appVersion` is essentially inert - it's
+only ever a fallback via `.Values.image.tag | default .Chart.AppVersion`
+in `deployment.yaml`, and the schema makes that fallback path
+unreachable in practice. Cleaned up the repository comment. Removed
+`env`/`envFrom` from both `values.yaml` and `values.schema.json`.
+
+**What it taught me:** "the schema documents the contract" cuts both
+ways - once `env`/`envFrom` were confirmed dead in templates, leaving
+them in the schema as optional-but-unused properties would have kept
+describing a contract the chart doesn't actually have.
+
+---

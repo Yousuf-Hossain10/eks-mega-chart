@@ -3,7 +3,7 @@ name: eks-mega-chart
 description: A production-ready Helm chart for deploying applications on Amazon EKS
 type: application
 version: 1.0.0  # Semantic versioning: bump for changes (e.g., 1.0.1 for fixes)
-appVersion: "1.25.4"  # Update to latest stable if using nginx; otherwise, match your app
+appVersion: "0.1.0"  # Placeholder only - real deploys always set image.tag explicitly (see values.schema.json)
 keywords:
   - eks
   - aws

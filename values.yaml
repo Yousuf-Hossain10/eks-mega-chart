@@ -11,7 +11,7 @@ strategy:
   maxUnavailable: 0
 
 image:
-  repository: yourorg/myapp  # Change from nginx to your actual app; nginx doesn't need DB configs
+  repository: yourorg/myapp  # Placeholder - point at your own image repository
   pullPolicy: IfNotPresent
   # No default tag. There is no such thing as a valid default git SHA, so
   # values.schema.json requires this to be set explicitly on every install/
@@ -131,11 +131,6 @@ topologySpreadConstraints:
   topologyKey: topology.kubernetes.io/zone
   whenUnsatisfiable: ScheduleAnyway
 
-# Environment variables (add if templates use them)
-env: []  # e.g., - name: ENV_VAR, value: "value"
-envFrom: []  # Mount configMap/secret as env
-
-# Keep configData and secretData, but document
 configData:
   DB_HOSTNAME: "dev-db.cluster.internal"
   LOG_LEVEL: "debug"
