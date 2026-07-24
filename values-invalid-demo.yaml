@@ -1,0 +1,21 @@
+# DELIBERATELY INVALID. For proving values.schema.json rejects bad input.
+# Do not use this file for a real install.
+#
+# Every field below violates a rule in values.schema.json:
+#   - replicaCount 0            -> below the minimum of 1
+#   - image.tag "latest"        -> explicitly rejected, not pinned to a commit
+#   - service.type "Ingress"    -> not one of the allowed Service types
+#   - securityContext.runAsNonRoot false -> pinned to const: true, no overlay may weaken it
+
+replicaCount: 0
+
+image:
+  repository: yourorg/myapp
+  tag: "latest"
+
+service:
+  type: Ingress
+  port: 80
+
+securityContext:
+  runAsNonRoot: false

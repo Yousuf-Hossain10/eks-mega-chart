@@ -1,0 +1,19 @@
+# DELIBERATELY INVALID, but in a way values.schema.json CANNOT catch.
+# Do not use this file for a real install.
+#
+# Every individual field here is schema-valid on its own:
+#   - image.tag is a real-looking SHA
+#   - autoscaling.minReplicas (5) and maxReplicas (2) are each >= 1
+# JSON Schema (as Helm evaluates it) has no way to compare two sibling
+# values to each other, so this passes schema validation cleanly. The
+# actual contradiction - max below min - is caught instead by a `fail`
+# guard in templates/hpa.yaml, which runs after schema validation, during
+# template rendering.
+
+image:
+  tag: "a1b2c3d"
+
+autoscaling:
+  enabled: true
+  minReplicas: 5
+  maxReplicas: 2
