@@ -212,3 +212,35 @@ is a syntax error, it's a wiring mistake between two independent
 conditions that happened to both default to "off."
 
 ---
+
+## Surprise: adding `values.schema.json` forced removing the default `image.tag`
+
+**What happened:** `values.yaml` shipped with `image.tag: "latest"` as its
+default the entire time. The moment `values.schema.json` requires `tag` to
+look like a git SHA (rejecting `latest`), the chart's own default value
+fails its own schema — `helm lint .` with zero overrides now fails,
+correctly, because there is no such thing as a valid default git SHA. A
+tag is commit-specific by definition; baking one in as a chart default was
+never really coherent, "latest" was just a placeholder that happened to
+render.
+
+**Fix:** Changed `image.tag` default to `""` (still fails the schema, on
+purpose) and documented that every render — including local dev testing,
+not just CI — must now supply `--set image.tag=<sha>` explicitly. This
+matches what `deploy.yml` already does (`--set image.tag=${{ github.sha
+}}`); it just makes that requirement enforced everywhere instead of only
+being true in the one place someone remembered to type it.
+
+**Also worth noting:** the schema originally rejected `latest` via
+`"not": {"const": "latest"}`, which is technically correct but produces an
+unreadable error (`Must not validate the schema (not)`). Switched to
+`"pattern": "^[0-9a-f]{7,40}$"` instead — this enforces the actual rule
+("image tags are git SHAs") rather than just its negation, and rejecting
+`latest` falls out as a side effect, with a much clearer error message
+naming the pattern it failed to match.
+
+**What it taught me:** A schema doesn't just validate values going
+forward — it immediately audits every existing default in the chart. The
+first thing it found wrong was the chart's own values.yaml.
+
+---

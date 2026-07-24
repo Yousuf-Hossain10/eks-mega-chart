@@ -13,7 +13,11 @@ strategy:
 image:
   repository: yourorg/myapp  # Change from nginx to your actual app; nginx doesn't need DB configs
   pullPolicy: IfNotPresent
-  tag: "latest"  # Pin to a specific version (e.g., v1.0.0) for prod; avoid 'latest'
+  # No default tag. There is no such thing as a valid default git SHA, so
+  # values.schema.json requires this to be set explicitly on every install/
+  # render, dev included - matching how deploy.yml already passes
+  # --set image.tag=${{ github.sha }}. "latest" is rejected by the schema.
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
