@@ -1,4 +1,7 @@
 {{- if .Values.autoscaling.enabled }}
+{{- if lt (int .Values.autoscaling.maxReplicas) (int .Values.autoscaling.minReplicas) }}
+{{- fail (printf "autoscaling.maxReplicas (%d) must be >= autoscaling.minReplicas (%d) - values.schema.json cannot express this cross-field comparison, so it is enforced here instead" (int .Values.autoscaling.maxReplicas) (int .Values.autoscaling.minReplicas)) }}
+{{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

@@ -244,3 +244,26 @@ forward — it immediately audits every existing default in the chart. The
 first thing it found wrong was the chart's own values.yaml.
 
 ---
+
+## Note: `autoscaling.maxReplicas >= minReplicas` can't live in the schema
+
+**What happened:** JSON Schema (as Helm's validator implements it) has no
+built-in way to compare two sibling values to each other — there's no
+"this number must be >= that other number" keyword available without
+vendor extensions Helm doesn't support. So `minReplicas: 5, maxReplicas: 2`
+passes `values.schema.json` cleanly: both are individually valid integers
+`>= 1`. The contradiction between them is invisible to a schema that only
+ever looks at one field at a time.
+
+**Fix:** Added a guard at the top of `templates/hpa.yaml` —
+`{{- if lt (int .Values.autoscaling.maxReplicas) (int .Values.autoscaling.minReplicas) }}{{ fail ... }}{{- end }}`
+— that runs during template rendering, after schema validation has
+already passed. `helm fail` produces a real, blocking render error, just
+via a completely different mechanism (Go template execution) than schema
+validation (structural JSON matching before any template even runs).
+
+**What it taught me:** this is the cleanest real example of the boundary
+between what a values schema can and cannot catch — see the writeup below
+and `values-invalid-replicas-demo.yaml` for the demonstration.
+
+---
