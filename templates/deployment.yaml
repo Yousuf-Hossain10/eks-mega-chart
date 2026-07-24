@@ -48,11 +48,17 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if or .Values.configData .Values.secretData }}
           envFrom:
+            {{- if .Values.configData }}
             - configMapRef:
                 name: {{ include "eks-mega-chart.fullname" . }}-config
+            {{- end }}
+            {{- if .Values.secretData }}
             - secretRef:
                 name: {{ include "eks-mega-chart.fullname" . }}-secret
+            {{- end }}
+          {{- end }}
           {{- if .Values.volumeMounts }}  # Add for read-only FS
           volumeMounts:
             - name: tmp

@@ -117,3 +117,45 @@ does **not** add the missing production approval gate noted above — that's
 still open and out of scope for this pass.
 
 ---
+
+## Bug: `envFrom` in deployment.yaml referenced ConfigMap/Secret unconditionally
+
+**Symptom:** `templates/configmap.yaml` and `templates/secret.yaml` are both
+conditional (`{{- if .Values.configData }}` / `{{- if .Values.secretData }}`)
+— they render nothing when those maps are empty. But
+`templates/deployment.yaml` had an unconditional `envFrom` block naming both
+resources by their generated names regardless. Verified directly: with
+`configData: {}` and `secretData: {}` at the base of `values.yaml`, `helm
+lint`/`helm template` still passed clean (0 ConfigMap/Secret resources
+rendered, but `envFrom` still pointed at both). Helm's own render can't
+catch this class of bug — it's not a template syntax error, it's two
+templates disagreeing about whether a referenced resource exists. On a real
+cluster this becomes `CreateContainerConfigError`: the kubelet can't start
+the container because `envFrom` names a ConfigMap/Secret that was never
+created.
+
+**Cause:** `configmap.yaml`/`secret.yaml` and `deployment.yaml` were written
+as if they'd always agree, but only the first two actually check
+`configData`/`secretData` before rendering. `deployment.yaml` never made the
+same check.
+
+**Fix:** Wrapped each `envFrom` entry in `deployment.yaml` with the same
+condition its corresponding resource template already uses
+(`{{- if .Values.configData }}` for `configMapRef`, `{{- if
+.Values.secretData }}` for `secretRef`), and wrapped the whole `envFrom` key
+in `{{- if or .Values.configData .Values.secretData }}` so an empty
+`envFrom:` key is never emitted with nothing under it. Confirmed by
+re-rendering with both maps empty: `envFrom` no longer appears in the output
+at all. Confirmed again with the real `values.yaml`/`values-prod.yaml`
+(both non-empty): `envFrom` still renders both refs exactly as before — no
+behavior change for the actual environments this chart ships with.
+
+**What it taught me:** `helm lint` and `helm template` only catch template
+*syntax* errors — they don't know that a name generated in one template is
+supposed to match a resource conditionally created in another. That kind of
+cross-template contract has to be checked by hand, or by actually deploying
+and watching pod status (`CreateContainerConfigError` only shows up at
+runtime, not at render time). Any place a resource name is referenced,
+check whether the thing that creates it is unconditional too.
+
+---
