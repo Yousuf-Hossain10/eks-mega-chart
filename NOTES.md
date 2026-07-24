@@ -68,3 +68,52 @@ This was already flagged in CLAUDE.md's "Current known state" checklist
 before I even started; confirmed for real here rather than taken on faith.
 
 ---
+
+## Bug: four separate defects in `.github/workflows/deploy.yml`
+
+**Symptom:** The workflow existed and was tracked in git the whole time —
+an earlier scan of mine missed it because a `find`/`ls` exclusion pattern
+accidentally also matched `.github`. Once actually read, it had four
+distinct, independent bugs, any one of which would break or compromise a
+real deploy:
+
+1. **Static AWS credentials.** `configure-aws-credentials@v4` was given
+   `aws-access-key-id` / `aws-secret-access-key` from `secrets.*`. This is
+   exactly the anti-pattern CLAUDE.md's non-negotiable security rule
+   forbids ("GitHub Actions authenticates to AWS via OIDC role assumption
+   only"). Long-lived static keys sitting in GitHub Secrets are a standing
+   credential-leak risk with no expiry.
+2. **Wrong trigger branch.** `on: push: branches: [main]`, but this repo's
+   default branch is `master`. This workflow has never fired for a real
+   reason — see the finding at the top of this file. It's also the only
+   thing that has been preventing the static-credential and
+   no-approval-gate problems from being exercised for real.
+3. **Wrong chart path.** Every `helm` command referenced `./eks-mega-chart`,
+   but `Chart.yaml` lives at the repo root. `helm lint ./eks-mega-chart`
+   and the deploy step would both fail with "no such file" the moment the
+   branch trigger ever matched.
+4. **Missing line continuation.** The deploy step's `run: |` block ended
+   the `--atomic` line with only a trailing `#` comment, no `\`. In a
+   YAML literal block passed to bash, each line runs as its own command
+   unless explicitly continued — so `--timeout 5m0s` would have executed
+   as its own (invalid) shell command, not as a flag on `helm upgrade`.
+
+**Cause:** The workflow reads like it was drafted once, by hand, without
+ever being run — every one of these bugs would have surfaced immediately
+on a single real trigger, and none of them are subtle.
+
+**Fix:** Changed the trigger to `master`; switched to
+`role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}` with
+`permissions: id-token: write` for OIDC (no static keys, no ARN committed —
+the actual ARN is a repo variable set at deploy time, per CLAUDE.md's rule
+against committing role ARNs); changed `./eks-mega-chart` to `.` in both
+the lint and deploy steps; added the missing `\` after `--atomic`.
+
+**What it taught me:** A workflow file that's never been triggered
+provides zero evidence it works — "it's in the repo" and "it runs" are
+different claims. Also confirms why the earlier `git ls-files` correction
+mattered: I can't audit, let alone fix, a file I never actually read. This
+does **not** add the missing production approval gate noted above — that's
+still open and out of scope for this pass.
+
+---
