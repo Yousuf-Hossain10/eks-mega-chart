@@ -82,6 +82,13 @@ securityContext:
   capabilities:
     drop: ["ALL"]
 
+# Pod Disruption Budget: keeps a minimum number of pods available during
+# voluntary disruptions (node drains, cluster upgrades). Off by default
+# because it needs replicaCount > 1 to mean anything.
+pdb:
+  enabled: false
+  minAvailable: 1
+
 # Placement for EKS (e.g., spread across AZs)
 nodeSelector: {}
 tolerations: []

@@ -37,3 +37,34 @@ reviewers) and is explicitly out of scope for this pass. Flagging it here
 so it isn't forgotten.
 
 ---
+
+## Bug: `templates/pdb.yaml` nil pointer — chart failed to render entirely
+
+**Symptom:**
+```
+helm lint .
+[ERROR] templates/: template: eks-mega-chart/templates/pdb.yaml:1:14: executing "eks-mega-chart/templates/pdb.yaml" at <.Values.pdb.enabled>: nil pointer evaluating interface {}.enabled
+Error: 1 chart(s) linted, 1 chart(s) failed
+```
+Same error, verbatim, from `helm template test .` and `helm template test .
+-f values-prod.yaml` — the second command doesn't even get far enough to
+apply the prod overrides, because template evaluation fails before that
+matters.
+
+**Cause:** `templates/pdb.yaml` reads `.Values.pdb.enabled`, but
+`values.yaml` had no top-level `pdb:` key at all. Referencing a field on a
+nil map throws immediately in Helm's template engine — this isn't a
+Kubernetes-side failure, the chart never got as far as producing YAML.
+
+**Fix:** Added a `pdb:` block to `values.yaml` with `enabled: false` and
+`minAvailable: 1`, matching what the README's configuration table already
+(incorrectly) claimed was the default. `enabled: false` is the correct
+default because a PDB only means something once `replicaCount > 1`.
+
+**What it taught me:** Every values key a template reads has to exist in
+`values.yaml`, even if the feature defaults to off. Referencing a key
+that's never defined isn't "off by default" — it's a crash by default.
+This was already flagged in CLAUDE.md's "Current known state" checklist
+before I even started; confirmed for real here rather than taken on faith.
+
+---
