@@ -1,0 +1,24 @@
+# Packaged/dependency Helm artifacts - rebuilt, never hand-edited
+*.tgz
+charts/*.tgz
+/charts/*/charts/
+
+# Per CLAUDE.md: real account IDs, cluster names, ARNs, hostnames live here
+CLAUDE.local.md
+
+# Local secrets / env files - never committed, real or fake
+.env
+*.pem
+*.key
+kubeconfig
+kubeconfig.yaml
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local override values some editors may create - not part of the chart contract
+values.local.yaml
+values-*.local.yaml

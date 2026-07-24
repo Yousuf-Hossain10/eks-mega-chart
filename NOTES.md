@@ -159,3 +159,25 @@ runtime, not at render time). Any place a resource name is referenced,
 check whether the thing that creates it is unconditional too.
 
 ---
+
+## Bug: `.gitignore.txt` was a tracked, empty, non-functional gitignore
+
+**Symptom:** The repo had a file named `.gitignore.txt` — the `.txt`
+extension means git never recognized it as an ignore file, and it was also
+completely empty (0 bytes, the standard empty-blob hash). Nothing was ever
+actually being ignored.
+
+**Cause:** Wrong filename, and never filled in.
+
+**Fix:** `git mv .gitignore.txt .gitignore`, then added real patterns:
+packaged Helm artifacts (`*.tgz`, subchart dependency directories),
+`CLAUDE.local.md` (per CLAUDE.md, that's explicitly where real account
+IDs/ARNs/hostnames are meant to live, so it must never be committed),
+local secret/env files, editor/OS noise, and local values overrides.
+
+**What it taught me:** A `.gitignore` with the wrong extension is silently
+useless — git won't error, it'll just track everything as if the file
+didn't exist. Worth checking that ignore files are actually named correctly,
+not just present.
+
+---
