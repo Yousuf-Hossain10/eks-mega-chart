@@ -71,7 +71,7 @@
     "resources": {
       "type": "object",
       "required": ["requests"],
-      "description": "Whether limits.cpu should exist at all, and whether requests.memory must equal limits.memory, is the open ADR-0002 resource-strategy decision - intentionally not encoded here yet.",
+      "description": "Per ADR-0002: CPU gets a request but no limit (CPU is compressible, a limit only throttles); memory request must equal memory limit (memory is not compressible, and this prevents the scheduler from overcommitting a node's real memory ceiling). Not structurally enforced here - like autoscaling.maxReplicas vs minReplicas, 'requests.memory == limits.memory' is a cross-field comparison JSON Schema can't express; see docs/adr/0002-resource-limits.md.",
       "properties": {
         "requests": {
           "type": "object",

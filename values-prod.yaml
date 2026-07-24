@@ -4,13 +4,13 @@ replicaCount: 3
 topologySpreadConstraints:
   whenUnsatisfiable: DoNotSchedule  # Real AZ capacity in prod - enforce the spread, don't just prefer it
 
+# Per docs/adr/0002-resource-limits.md: no CPU limit, memory request == limit.
 resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
   requests:
     cpu: 250m
-    memory: 256Mi
+    memory: 512Mi
+  limits:
+    memory: 512Mi
 
 autoscaling:
   enabled: true

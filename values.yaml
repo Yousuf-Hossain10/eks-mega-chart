@@ -32,13 +32,17 @@ service:
   type: ClusterIP
   port: 80
 
+# Per docs/adr/0002-resource-limits.md: CPU gets a request, no limit -
+# CPU is compressible, so a limit only adds CFS-throttling latency, it
+# doesn't protect anything. Memory request == limit - memory has no
+# throttle, only OOMKill, and this keeps the scheduler from bin-packing a
+# node past what it can actually hold if every pod hit its ceiling at once.
 resources:
-  limits:
-    cpu: 200m  # Add minimal limits for dev to prevent resource starvation
-    memory: 256Mi
   requests:
     cpu: 100m
-    memory: 128Mi
+    memory: 256Mi
+  limits:
+    memory: 256Mi
 
 # Liveness/Readiness probes ensure EKS knows if your app is frozen
 livenessProbe:

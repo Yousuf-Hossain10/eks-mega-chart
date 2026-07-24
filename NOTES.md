@@ -369,3 +369,37 @@ would have looked correct while quietly deploying fake dev credentials
 under a `prod` label.
 
 ---
+
+## Decision: ADR-0002 written, values.yaml/values-prod.yaml didn't match it
+
+**What happened:** CLAUDE.md referenced `docs/adr/0002-resource-limits.md`
+as the place this decision lives, but the file never existed - confirmed
+via `git ls-files` and a filesystem search before writing anything.
+Wrote it, arguing CPU-request-no-limit / memory-request-equals-limit on
+the technical merits (CPU is compressible so a limit only adds CFS
+throttling latency without capping anything real; memory has no
+throttle, only OOMKill, so request must equal limit or the scheduler can
+bin-pack a node past what it can actually hold) - and argued the
+opposite position just as hard (noisy-neighbor CPU starvation, cost/
+capacity predictability, multi-tenant chargeback, compliance mandates
+that just want the field set), plus the specific conditions under which
+I'd reverse the call.
+
+Checked `values.yaml` and `values-prod.yaml` against the decision once it
+was written down, and neither matched it: both had a `limits.cpu` (200m
+dev, 500m prod) and a memory request lower than the memory limit (128Mi
+request / 256Mi limit dev; 256Mi / 512Mi prod) - the exact pattern the
+ADR argues against. Removed `limits.cpu` from both; set memory request
+equal to memory limit in both (kept the existing limit value as the
+shared number, rather than the existing request value, to avoid
+silently shrinking the pod's real memory ceiling).
+
+**What it taught me:** writing the ADR is what actually caught this -
+the values files had been carrying an undocumented, unexamined resource
+policy since before this session started, and nothing failed lint or
+schema validation because "has a CPU limit" isn't structurally wrong,
+it's just a different (defensible, but different) policy than the one
+now on record. A schema can validate shape; it can't tell you that your
+defaults contradict a decision you haven't written down yet.
+
+---
