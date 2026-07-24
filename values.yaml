@@ -2,6 +2,14 @@
 
 replicaCount: 1
 
+# Explicit rolling update behaviour, not the implicit Kubernetes default.
+# maxUnavailable: 0 means capacity never drops below replicaCount during
+# a rollout (zero-downtime); maxSurge: 1 caps how many extra pods exist
+# at once during the rollout, bounding the extra resource cost.
+strategy:
+  maxSurge: 1
+  maxUnavailable: 0
+
 image:
   repository: yourorg/myapp  # Change from nginx to your actual app; nginx doesn't need DB configs
   pullPolicy: IfNotPresent
