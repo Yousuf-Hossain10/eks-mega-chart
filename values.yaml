@@ -109,6 +109,16 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# Spreads pods evenly across AZs instead of letting them pile onto one.
+# whenUnsatisfiable: ScheduleAnyway here (dev) so a small/single-AZ dev
+# cluster never leaves pods stuck Pending; values-prod.yaml tightens this
+# to DoNotSchedule, where real AZ capacity makes the guarantee meaningful.
+topologySpreadConstraints:
+  enabled: true
+  maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: ScheduleAnyway
+
 # Environment variables (add if templates use them)
 env: []  # e.g., - name: ENV_VAR, value: "value"
 envFrom: []  # Mount configMap/secret as env

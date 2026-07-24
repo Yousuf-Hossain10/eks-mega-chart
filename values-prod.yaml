@@ -1,6 +1,9 @@
 # Production overrides
 replicaCount: 3
 
+topologySpreadConstraints:
+  whenUnsatisfiable: DoNotSchedule  # Real AZ capacity in prod - enforce the spread, don't just prefer it
+
 resources:
   limits:
     cpu: 500m
