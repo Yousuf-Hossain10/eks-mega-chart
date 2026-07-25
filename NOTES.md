@@ -718,4 +718,15 @@ all - the `prod` environment existed but its "Required reviewers"
 checkbox had never actually been ticked/saved; fixed, then re-tested
 with the result above.)
 
+**"Prevent self-review" boundary:** enabled on `prod` as declared policy
+- correctly reflecting the intended rule for whenever a second reviewer
+exists - but not runtime-verified, and deliberately not pretended to be.
+As a solo maintainer, exercising it requires a second real person to
+attempt approving their own triggered run and be blocked; that pass was
+skipped rather than faked with a throwaway second account for no real
+signal. The approval gate mechanism itself (pause before dispatch,
+execution only after approval) is witnessed and proven above; self-review
+prevention specifically is configured and reasoned about, not watched
+happen.
+
 ---
