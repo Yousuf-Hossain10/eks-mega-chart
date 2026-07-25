@@ -39,8 +39,14 @@
         },
         "tag": {
           "type": "string",
-          "pattern": "^[0-9a-f]{7,40}$",
-          "description": "Image tags are git SHAs (short or full, lowercase hex) - this pattern rejects 'latest' as a side effect, since it isn't a commit SHA."
+          "minLength": 1,
+          "not": { "const": "latest" },
+          "anyOf": [
+            { "pattern": "^[0-9a-f]{7,40}$" },
+            { "pattern": "^v?[0-9]+(\\.[0-9]+){1,3}(-[0-9A-Za-z.]+)?$" },
+            { "pattern": "^sha256:[0-9a-f]{64}$" }
+          ],
+          "description": "Must be an immutable reference: a git SHA, a semver-ish version tag (nginx:1.25.4, alpine:3.19), or a digest. 'latest' is rejected outright. Chosen over the stricter SHA-only pattern specifically so third-party images (e.g. the kind smoke test's nginx image) are representable in the chart's own values contract, not just this org's app images."
         }
       }
     },

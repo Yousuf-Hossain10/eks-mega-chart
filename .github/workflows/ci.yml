@@ -25,6 +25,10 @@ env:
   # loader - v1.1.x's plugin.yaml uses the v4-only platformHooks field
   # and fails to install under v3. Verified locally before pinning.
   HELM_UNITTEST_VERSION: v1.0.3
+  KIND_VERSION: v0.32.0
+  # Real, pinned, third-party tag - see tests/values-smoke.yaml for why
+  # nginx and why this specific tag, not "latest".
+  SMOKE_IMAGE_TAG: "1.25.4"
 
 jobs:
   validate:
@@ -131,3 +135,81 @@ jobs:
       # is tests/*_test.yaml, so it never touches them; see NOTES.md.
       - name: Run helm unittest
         run: helm unittest .
+
+  kind-smoke-test:
+    name: kind smoke test
+    runs-on: ubuntu-latest
+    # Still no AWS, no OIDC, no cluster credentials - kind is a local,
+    # ephemeral, disposable cluster running entirely inside this job's
+    # own runner via Docker. Nothing here talks to a real account.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Create kind cluster
+        run: kind create cluster --name golden-path --wait 120s
+
+      # tests/values-smoke.yaml swaps in nginx (a real, pullable image)
+      # for the chart's placeholder image, and points the probes at the
+      # one path nginx actually serves. See that file for why - this is
+      # the "test-only values override" approach, not a smoke image
+      # chosen to answer every possible path regardless of correctness.
+      - name: helm install (dev values + smoke overlay)
+        run: |
+          helm install smoke . \
+            -f tests/values-smoke.yaml \
+            --set image.tag="${SMOKE_IMAGE_TAG}" \
+            --set fullnameOverride=smoke-test \
+            --namespace smoke-test \
+            --create-namespace \
+            --wait \
+            --timeout 3m
+
+      # helm install --wait already blocks until the Deployment is
+      # available, but that's implicit - this makes "pods actually
+      # reached Ready" an explicit, readable assertion in its own step,
+      # not just a side effect of a flag three steps up.
+      - name: Assert pods reached Ready
+        run: |
+          kubectl -n smoke-test rollout status deployment/smoke-test --timeout=120s
+          kubectl -n smoke-test wait pod \
+            -l app.kubernetes.io/instance=smoke,app.kubernetes.io/name=eks-mega-chart \
+            --for=condition=Ready \
+            --timeout=120s
+
+      # The Day-1-adjacent failure mode this catches: a Service whose
+      # selector doesn't actually match any pod's labels. helm template +
+      # kubeconform both think that Service is perfectly valid YAML -
+      # neither one knows or cares whether the Deployment's pod template
+      # labels and the Service's selector happen to agree. Only a real
+      # cluster, asked "does this Service actually have any endpoints,"
+      # can tell the difference between "valid" and "actually works."
+      - name: Assert the Service has real endpoints
+        run: |
+          ENDPOINTS=$(kubectl -n smoke-test get endpoints smoke-test -o jsonpath='{.subsets[*].addresses[*].ip}')
+          if [ -z "$ENDPOINTS" ]; then
+            echo "::error::Service smoke-test has no endpoints - its selector matches no Ready pod. helm template and kubeconform both passed this; only a real cluster catches it."
+            kubectl -n smoke-test get endpoints smoke-test -o yaml
+            kubectl -n smoke-test get pods -o wide
+            exit 1
+          fi
+          echo "Service smoke-test has real endpoints: ${ENDPOINTS}"
+
+      - name: helm uninstall
+        if: always()
+        run: helm uninstall smoke -n smoke-test --wait --timeout 2m || true
+
+      - name: Delete kind cluster
+        if: always()
+        run: kind delete cluster --name golden-path || true

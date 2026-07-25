@@ -537,3 +537,54 @@ guardrail that might mask it, not just revert the one file the original
 fix touched.
 
 ---
+
+## kind smoke test added to ci.yml - and the tag-pattern decision it forced
+
+**Building tests/values-smoke.yaml immediately hit the still-open
+tag-pattern question from a few prompts back.** `values.schema.json`'s
+`image.tag` was still the strict git-SHA-only pattern (option (a)/(b)
+were presented, deliberately left unresolved since it was explicitly
+your call). `nginx:1.25.4` - a real, pinned, pullable public tag - failed
+it immediately:
+```
+[ERROR] values.yaml: - image.tag: Does not match pattern '^[0-9a-f]{7,40}$'
+```
+This is the exact failure mode named when the pattern was first flagged
+as too strict. Asked rather than silently picking a resolution, since it
+was previously and explicitly reserved as your decision. You chose
+option (a) - `anyOf` [git SHA / semver-ish / digest] with a sibling
+`not: {const: "latest"}`. Applied it to `values.schema.json`; reran the
+full regression sweep (dev/staging/prod lint+template, the two
+`tests/invalid-*` fixtures, all four unittest suites) - everything still
+passes, `latest` is still rejected, and the smoke overlay now validates.
+
+**`tests/values-smoke.yaml`: the deliberate choice, not a shortcut.**
+`values.yaml`'s image (`yourorg/myapp`) is a placeholder with nothing
+real to pull. Substituted nginx via a dedicated, checked-in overlay file
+(not an inline workflow hack), with probes explicitly repointed from
+`/healthz`/`/ready` to `/` - the one path nginx actually serves.
+Considered `hashicorp/http-echo` first (it answers every request path
+with 200 regardless of what's asked), and rejected it specifically
+because that would make the probe-path assertion untestable - the job
+would pass whether the configured paths were right or completely wrong,
+which is closer to papering over a mismatch than resolving it. nginx
+genuinely 404s on the wrong path, so this smoke test can actually fail
+for the right reason if the wiring is ever broken.
+
+**What I could not verify locally, and said so rather than claiming
+otherwise:** Docker Desktop's daemon isn't reachable in this sandbox
+(`docker ps` fails identically from both the Bash tool and PowerShell -
+not a sandboxing quirk, the daemon itself isn't running here). Could not
+actually run `kind create cluster`, `helm install --wait`, `kubectl
+wait`, or the endpoints check against a live cluster. What was verified
+instead: the smoke values overlay renders correctly end to end (image,
+container port, probe paths, and - critically - that the rendered
+Service's `selector` and the Deployment's pod-template labels actually
+match, which is the exact thing the endpoints-check step exists to
+prove); the workflow YAML parses as valid GitHub Actions syntax; and the
+`kind` release/download URL for the pinned version resolves for real.
+The actual live-cluster run needs to happen for real in GitHub Actions
+before trusting this job - flagging that gap explicitly rather than
+reporting this as tested.
+
+---
