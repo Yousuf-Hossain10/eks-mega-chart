@@ -1,0 +1,23 @@
+# TEMPORARY, scratch-branch only. Exists to trigger deploy.yml's
+# scan-image -> deploy ordering manually, with no AWS account needed.
+# Uses environment: dev deliberately (no required-reviewer gate) so this
+# test isolates the scan-image needs: link specifically, without mixing
+# in the already-witnessed approval gate. Never merge this file to
+# master - delete the whole branch once the observation is done.
+name: TEST scan-image gates deploy (delete branch after verifying)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  scan-gate-test:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      service_name: scan-gate-test
+      environment: dev
+      image_tag: "1.14.0"
+      namespace: scan-gate-test

@@ -1,0 +1,21 @@
+# TEMPORARY, scratch-branch only - do not merge to master.
+#
+# Exists because of a real gap this test surfaced: deploy.yml's
+# scan-image/lint/upgrade steps all construct the values filename as
+# values-${{ inputs.environment }}.yaml, which for environment: dev
+# resolves to "values-dev.yaml" - a file that has never existed at this
+# repo's root. This repo's own "dev" values have always been the
+# unsuffixed values.yaml (no -f flag needed), a different convention
+# than deploy.yml assumes. examples/sample-api/values-dev.yaml already
+# follows deploy.yml's real convention correctly; this repo's own root
+# never has. Worth fixing for real once this test is done - see
+# NOTES.md.
+#
+# Also self-contained deliberately, not an overlay: scan-image's
+# extraction only greps ONE file, not a Helm-merged view, so an overlay
+# file that inherits image.repository from values.yaml (the way
+# values-staging.yaml/values-prod.yaml already do) would make extraction
+# fail to find anything. A real service repo's values-<env>.yaml files
+# (like examples/sample-api's) are self-contained for this exact reason.
+image:
+  repository: nginx
