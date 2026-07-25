@@ -1,17 +1,19 @@
 # What Is This, Actually?
 
-> **Status note:** this document describes the project's target design, not
-> only what's built and verified today. In particular, the worked example's
-> Step 3 (automatic security scanning), Step 4 ("safe test environment"),
-> and Step 5 (a human-approval gate before production) describe the intended
-> pipeline behavior — the actual `.github/workflows/deploy.yml` in this repo
-> does not yet do any of those three things; it lints and deploys straight
-> to a `production` namespace with no scan and no gate. The comparison
-> table rows "Code and container security scanning" and "Path to
-> production," and the line in the 60-second pitch about not being able to
-> skip the scan or the approval, describe that same target state. See
-> [gap-tracker.md](gap-tracker.md) for the specific list of what's still
-> outstanding.
+> **Status note (updated Day 4):** this document still describes the
+> project's target design in places, not only what's built and verified
+> today — but less of it than before. Step 4 ("safe test environment") and
+> Step 5 (a human-approval gate before production) are now real:
+> `.github/workflows/deploy.yml` is a reusable `workflow_call` workflow
+> with `dev`/`staging`/`prod` as separate GitHub Environments, `dev`
+> deploying automatically and `prod` gated behind that environment's
+> required-reviewer protection rule. The comparison table's "Path to
+> production" row is accurate now. What's still not real: **Step 3**
+> (automatic security scanning) — neither `ci.yml` nor `deploy.yml` runs
+> any code or container scanner, so the comparison table's "Code and
+> container security scanning" row and the closing pitch line's "nobody
+> can skip the scan" are both still aspirational. See
+> [gap-tracker.md](gap-tracker.md) for the exact, current list.
 
 ## The problem, before any of the solution
 
