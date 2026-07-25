@@ -1,0 +1,16 @@
+# sample-api's own dev overrides. Lives in this service repo, not the
+# platform chart repo - the reusable deploy.yml checks out the chart
+# separately and applies this file with -f. image.tag is deliberately
+# absent here too: the workflow always supplies it via --set from the
+# real git SHA being deployed, same as every other environment.
+image:
+  repository: yourorg/sample-api
+
+ingress:
+  enabled: true
+  className: alb
+  hosts:
+    - host: sample-api-dev.mycompany.com
+      paths:
+        - path: /
+          pathType: Prefix

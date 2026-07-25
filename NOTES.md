@@ -36,6 +36,14 @@ a separate, larger change (environments, `workflow_call`, required
 reviewers) and is explicitly out of scope for this pass. Flagging it here
 so it isn't forgotten.
 
+**CLOSED (Day 4):** `deploy.yml` is now a `workflow_call`-only reusable
+workflow with no trigger of its own - a push to `master` in this repo
+deploys nothing. The `deploy` job's `environment: ${{ inputs.environment
+}}` is dynamic per caller, and `prod`'s required-reviewer protection rule
+(configured in each calling service repo's own Settings, not in this
+YAML) is the actual gate; see the full entry further down for the design
+and what's verified vs. not.
+
 ---
 
 ## Bug: `templates/pdb.yaml` nil pointer — chart failed to render entirely
@@ -645,5 +653,54 @@ failure)" step (`kubectl describe`, current + previous container logs,
 events, sorted) that runs before cleanup on any failure, specifically so
 if this configuration is still wrong in some detail, the next log says
 exactly what, instead of another bare timeout.
+
+---
+
+## deploy.yml converted to a reusable workflow with a real approval gate
+
+**What changed:** `deploy.yml` went from a standalone workflow triggered
+`on: push: branches: [master]` (deploying straight to a `production`
+namespace, no gate - see the finding at the top of this file) to
+`on: workflow_call` only, with no trigger of its own at all. A service
+repo calls it explicitly, once per environment, via a ~5-line caller
+workflow (`examples/sample-api/.github/workflows/deploy.yml`). Pushing
+to `master` in *this* repo now deploys nothing, anywhere - confirmed by
+checking the file directly: `on:` contains only `workflow_call`.
+
+**The gate itself:** the `deploy` job sets `environment: ${{
+inputs.environment }}` dynamically. GitHub Environments do two things at
+once here, which is why one mechanism covers both needs: they apply
+whatever protection rules are configured for that environment name in
+the *calling* repo's own Settings (required reviewers, for `prod` only -
+dev and staging are separate environments but carry no reviewer
+requirement, see the design note above), and they scope `vars.*` lookups
+(`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `EKS_CLUSTER_NAME`) so each
+environment can point at its own AWS role and cluster, least-privilege
+per environment.
+
+**A gap closed before it could be exploited:** `environment:` is
+resolved before any step in that job runs, so validating `inputs.environment`
+*inside* the gated job would be too late - a typo'd value (e.g.
+"produciton") would make GitHub silently create and use a brand-new,
+unprotected ad-hoc environment rather than failing. Added a separate
+`validate-inputs` job with no `environment:` set at all, which the
+gated `deploy` job `needs:`, that hard-rejects anything except exactly
+`dev`/`staging`/`prod` (and separately re-checks `image_tag` isn't empty
+or `latest`, even though `values.schema.json` would also catch that -
+cheap, and fails faster with a clearer message).
+
+**What's actually verified, and what isn't.** Verified: the workflow
+YAML is syntactically valid; `helm lint`/`helm template` against
+`examples/sample-api/values-dev.yaml` (the values file the reusable
+workflow's own `helm lint`/`helm upgrade` steps would use) render
+correctly against the real chart. **Not verified, and can't be from this
+sandbox:** the actual OIDC token exchange, whether a real IAM trust
+policy accepts it, whether a GitHub Environment's required-reviewer rule
+actually blocks the job the way described, or the two-checkout pattern
+(service repo + `Yousuf-Hossain10/eks-mega-chart` chart) actually working
+end to end in a real cross-repo `workflow_call`. This needs a real
+service repo, a real IAM role, and a real GitHub Environment with a
+reviewer added, exercised for real - same category of gap as the kind
+smoke test, flagged the same way rather than claimed as tested.
 
 ---

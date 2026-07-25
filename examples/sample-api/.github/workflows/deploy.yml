@@ -1,0 +1,34 @@
+name: Deploy sample-api
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+jobs:
+  # Automatic - every push to main deploys straight to dev. No approval
+  # gate here on purpose (see docs/opinions.md in the platform repo).
+  deploy-dev:
+    if: github.event_name == 'push'
+    uses: Yousuf-Hossain10/eks-mega-chart/.github/workflows/deploy.yml@master
+    with:
+      service_name: sample-api
+      environment: dev
+      image_tag: ${{ github.sha }}
+      namespace: sample-api-dev
+
+  # Same reusable workflow, same file - the only difference is
+  # environment: prod. The approval gate itself isn't in this YAML at
+  # all: it's the "prod" GitHub Environment's required-reviewers
+  # protection rule, configured once in this repo's own Settings ->
+  # Environments -> prod. This job will visibly pause "Waiting for
+  # approval" until a reviewer signs off.
+  deploy-prod:
+    if: github.event_name == 'release'
+    uses: Yousuf-Hossain10/eks-mega-chart/.github/workflows/deploy.yml@master
+    with:
+      service_name: sample-api
+      environment: prod
+      image_tag: ${{ github.sha }}
+      namespace: sample-api-prod

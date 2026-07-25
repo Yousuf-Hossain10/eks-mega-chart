@@ -1,42 +1,137 @@
-name: EKS Helm Deploy
+name: Deploy (reusable)
 
+# Reusable workflow only - never triggers on its own. A service repo
+# calls this explicitly via `uses:`, once per environment it wants to
+# deploy to. Nothing in this repository triggers a deploy anymore; see
+# NOTES.md for what used to happen here (push to master -> straight to
+# a production namespace, no approval gate at all) and why that's closed
+# now.
 on:
-  push:
-    branches:
-      - master
+  workflow_call:
+    inputs:
+      service_name:
+        description: "Name of the service being deployed - used as the Helm release name."
+        type: string
+        required: true
+      environment:
+        description: "Target environment. Must be exactly one of: dev, staging, prod."
+        type: string
+        required: true
+      image_tag:
+        description: "Git SHA to deploy. Rejected by values.schema.json (and re-checked here) if it's 'latest' or empty."
+        type: string
+        required: true
+      namespace:
+        description: "Kubernetes namespace to deploy into."
+        type: string
+        required: true
+      chart_ref:
+        description: "Git ref of Yousuf-Hossain10/eks-mega-chart to deploy the chart from. Defaults to master; pin a tag/SHA for reproducible deploys."
+        type: string
+        required: false
+        default: master
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  deploy:
+  # Runs with NO `environment:` set, deliberately, and before the job
+  # that has one. Job-level `environment:` is resolved before any step
+  # in that job runs, so validation can't happen inside the gated job
+  # itself - if it could, a typo'd environment name (e.g. "produciton")
+  # would make GitHub silently create and use a brand-new, unprotected
+  # ad-hoc environment, bypassing the approval gate entirely instead of
+  # failing loudly. This job exists specifically to close that gap.
+  validate-inputs:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4  # Updated to latest version for better security/features
+      - name: Validate environment and image tag
+        run: |
+          case "${{ inputs.environment }}" in
+            dev|staging|prod) ;;
+            *)
+              echo "::error::environment must be exactly one of dev, staging, prod - got '${{ inputs.environment }}'"
+              exit 1
+              ;;
+          esac
+          if [ -z "${{ inputs.image_tag }}" ] || [ "${{ inputs.image_tag }}" = "latest" ]; then
+            echo "::error::image_tag must be a real git SHA, not empty or 'latest' - got '${{ inputs.image_tag }}'"
+            exit 1
+          fi
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4  # Updated to latest version
+  deploy:
+    needs: validate-inputs
+    runs-on: ubuntu-latest
+    # This is the approval gate. dev and staging are separate GitHub
+    # Environments too (so each gets its own scoped AWS role/region/
+    # cluster vars, least-privilege per environment) but carry no
+    # required reviewers - only prod does. That protection rule lives in
+    # the CALLING repo's own Settings -> Environments -> prod, not in
+    # this YAML; this workflow can't create it, only respect it.
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout calling service repo (its own values file)
+        uses: actions/checkout@v4
+
+      - name: Checkout golden-path chart
+        uses: actions/checkout@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}  # OIDC role assumption, no static keys
-          aws-region: ${{ vars.AWS_REGION }}  # Use repo variable for region (set in GitHub settings)
+          repository: Yousuf-Hossain10/eks-mega-chart
+          ref: ${{ inputs.chart_ref }}
+          path: golden-path-chart
 
-      - name: Update Kubeconfig
-        run: aws eks update-kubeconfig --name ${{ vars.EKS_CLUSTER_NAME }} --region ${{ vars.AWS_REGION }}  # Use variables for cluster/region
+      # OIDC role assumption only - no static AWS_ACCESS_KEY_ID/
+      # AWS_SECRET_ACCESS_KEY anywhere. role-to-assume and aws-region
+      # come from vars, not secrets, because an IAM role ARN isn't
+      # sensitive on its own - the security boundary is the role's trust
+      # policy (see the OIDC explanation below), not keeping the ARN
+      # string hidden. vars.* resolve against whichever GitHub
+      # Environment this job is running under (dev/staging/prod), so
+      # each environment can point at its own role and region.
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER_NAME }}" --region "${{ vars.AWS_REGION }}"
 
       - name: Install Helm
-        uses: azure/setup-helm@v4  # Updated to latest version
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
 
-      - name: Lint Helm Chart
-        run: helm lint .  # Chart.yaml lives at the repo root, not ./eks-mega-chart
+      - name: Lint chart against this service's values file
+        run: helm lint golden-path-chart -f "values-${{ inputs.environment }}.yaml" --set image.tag="${{ inputs.image_tag }}"
 
-      - name: Deploy Helm Chart
+      # --atomic implies --wait on its own; --wait is listed explicitly
+      # anyway so the intent is readable without needing to know that.
+      - name: helm upgrade --install
         run: |
-          helm upgrade --install my-app-prod . \
-            --namespace production \
+          helm upgrade --install "${{ inputs.service_name }}" golden-path-chart \
+            --namespace "${{ inputs.namespace }}" \
             --create-namespace \
-            -f values-prod.yaml \
-            --set image.tag=${{ github.sha }} \
+            -f "values-${{ inputs.environment }}.yaml" \
+            --set image.tag="${{ inputs.image_tag }}" \
             --atomic \
+            --wait \
             --timeout 5m0s
+
+      - name: Deployment summary
+        run: |
+          REVISION=$(helm status "${{ inputs.service_name }}" -n "${{ inputs.namespace }}" -o json | jq -r '.version')
+          echo "Deployed ${{ inputs.service_name }} to ${{ inputs.environment }} (namespace: ${{ inputs.namespace }})"
+          echo "Image tag:    ${{ inputs.image_tag }}"
+          echo "Helm revision: ${REVISION}"
+          {
+            echo "## Deploy summary"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Service | ${{ inputs.service_name }} |"
+            echo "| Environment | ${{ inputs.environment }} |"
+            echo "| Namespace | ${{ inputs.namespace }} |"
+            echo "| Image tag | \`${{ inputs.image_tag }}\` |"
+            echo "| Helm revision | ${REVISION} |"
+          } >> "$GITHUB_STEP_SUMMARY"
