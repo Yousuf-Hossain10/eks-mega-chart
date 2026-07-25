@@ -59,22 +59,36 @@ merged, and actually exercised, not just written.
       one structurally requires a second reviewer.
 
 - [ ] **"Nobody can skip the scan or skip the approval"** (what-is-this.md,
-      60-second spoken pitch, closing line). Still false — for a narrower,
-      more precise reason again (Day 3: three unbuilt things; Day 4: one
-      unbuilt thing; Day 5: zero unbuilt things, one missing *link*). Both
-      halves now exist and both are individually proven to work: the scan
-      genuinely fails on real findings (Day 5), the approval gate
-      genuinely blocks execution (Day 4, witnessed live). What's still
-      missing is **enforcement that ties them together and to the deploy
-      path**. Checked directly: `ci.yml` and `deploy.yml` have zero
-      coupling — no `needs:`, no shared trigger, nothing. A scan failure
-      in `ci.yml` does not currently stop `deploy.yml` (or a service's
-      caller workflow) from running. For "nobody can skip the scan" to be
-      literally true, `ci.yml`'s scan jobs would need to be configured as
-      **required status checks on the calling repo's branch protection**
-      (a repo Settings change, same category as the environment protection
-      rules from Day 4 — not something expressible in this YAML alone),
-      and ideally a deploy should only be able to target a commit that
-      actually passed CI. Neither is configured or verified yet. Don't
-      tick this until that link exists and has been watched actually block
-      something, the same bar as everything else on this list.
+      60-second spoken pitch, closing line). Still false, but the shape of
+      the remaining gap changed on Day 5 and is worth recording precisely
+      rather than rounding up.
+
+      First checked whether **branch protection on `eks-mega-chart`'s
+      `master`** (required status checks) would close it — the obvious,
+      repo-settings answer, same category as the Day 4 environment rules.
+      Traced it precisely and the honest answer was no: that only gates
+      *merging into this repo*. It doesn't stop a caller from overriding
+      `chart_ref` to a ref that never went through CI, and more
+      fundamentally it never touches the **service's own application
+      image** — `ci.yml`'s scans check this repo's chart template and a
+      fixed demo image, never the actual thing `deploy.yml` ships via
+      `inputs.image_tag`. A fully protected `master` here would have
+      flipped this checkbox without making the underlying claim true.
+
+      **Built the real fix instead:** `deploy.yml` now has a `scan-image`
+      job that extracts the caller's actual image (from their own
+      `values-<environment>.yaml`) and runs `trivy image` against it;
+      `deploy` `needs: [validate-inputs, scan-image]`. This is in-workflow
+      enforcement, independent of repo settings, `chart_ref`, or which
+      repo is calling — structurally the right mechanism, not the one that
+      just turns the box green.
+
+      **Still unchecked because it has never been triggered — not once,**
+      unlike the approval gate, which was genuinely run and watched
+      pausing before that box was marked resolved. The design is now
+      correct; that's real, recorded progress. It is not yet a witnessed
+      fact. Also worth naming: `examples/sample-api` still has no real
+      image behind it, so even a live trigger today would hit
+      `UNAUTHORIZED` at the image-pull step rather than demonstrate a
+      genuine clean-scan-then-deploy pass — a real image is needed before
+      this can be fully exercised, not just re-run.

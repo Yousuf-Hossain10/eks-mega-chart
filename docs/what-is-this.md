@@ -14,12 +14,16 @@
 > accurate now.
 >
 > **What's still not real: the closing pitch line's "nobody CAN skip the
-> scan or the approval."** Both mechanisms work individually, but they're
-> not linked to each other or to the deploy path — `ci.yml` and
-> `deploy.yml` have zero coupling (no `needs:`, no shared trigger), so a
-> failed scan does not currently stop a deploy from running. That link
-> needs branch-protection required-status-checks on the calling repo, not
-> configured or verified yet. See
+> scan or the approval."** Checked whether branch protection on this
+> repo's `master` would close it (the obvious repo-settings fix) — it
+> wouldn't have: it only gates merges into this repo, never touches a
+> service's own application image, and doesn't stop a caller overriding
+> which ref of the chart it pulls. Built the actual fix instead:
+> `deploy.yml` now has a `scan-image` job that scans the real image being
+> deployed, and `deploy` structurally can't run without it succeeding
+> (`needs:`, not a repo setting). That's the right mechanism, verified as
+> design-correct — but it has never been triggered even once, so it isn't
+> a witnessed fact yet, only a correct design. See
 > [gap-tracker.md](gap-tracker.md) for the exact, current list.
 
 ## The problem, before any of the solution
