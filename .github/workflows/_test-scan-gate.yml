@@ -1,0 +1,31 @@
+# TEMPORARY, scratch-branch only. Exists to trigger deploy.yml's
+# scan-image -> deploy ordering manually, with no AWS account needed.
+# Uses environment: dev deliberately (no required-reviewer gate) so this
+# test isolates the scan-image needs: link specifically, without mixing
+# in the already-witnessed approval gate. Never merge this file to
+# master - delete the whole branch once the observation is done.
+#
+# PASS scenario: values-dev.yaml on this branch points at the same
+# image + tag ci.yml's own trivy-image-scan already verified clean
+# (nginxinc/nginx-unprivileged:1.29.2-alpine), and this repo's own
+# .trivyignore is present in this same checkout, so it applies
+# automatically. Expect scan-image to succeed, deploy to actually
+# dispatch, and only then fail at Configure AWS credentials - the same
+# downstream failure the Day 4 gate test hit, now one step later.
+name: TEST scan-image gates deploy (delete branch after verifying)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  scan-gate-test:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      service_name: scan-gate-test
+      environment: dev
+      image_tag: "1.29.2-alpine"
+      namespace: scan-gate-test

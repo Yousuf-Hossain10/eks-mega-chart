@@ -1,0 +1,13 @@
+# TEMPORARY, scratch-branch only - do not merge to master.
+#
+# PASS scenario: points at the exact image + tag ci.yml's own
+# trivy-image-scan job already verified scans to zero HIGH/CRITICAL
+# findings (with this repo's own .trivyignore, present automatically in
+# this same checkout). Expect scan-image to succeed here too, letting
+# deploy actually dispatch.
+#
+# Self-contained deliberately, not an overlay - see the FAIL-scenario
+# branch's version of this file for why (scan-image's extraction greps
+# one file, not a Helm-merged view).
+image:
+  repository: nginxinc/nginx-unprivileged
