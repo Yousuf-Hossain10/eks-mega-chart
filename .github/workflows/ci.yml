@@ -195,16 +195,27 @@ jobs:
       # labels and the Service's selector happen to agree. Only a real
       # cluster, asked "does this Service actually have any endpoints,"
       # can tell the difference between "valid" and "actually works."
+      # Polls rather than checking once: a Service can exist for a moment
+      # before the endpoint controller has observed the (already-Ready)
+      # pod and populated Endpoints/EndpointSlice. A single check here
+      # would be a race, not a real assertion. 30 attempts * 2s = 60s
+      # budget - generous enough to rule out propagation lag, but a
+      # genuine selector mismatch still fails (just after burning the
+      # full budget first, since it can never resolve).
       - name: Assert the Service has real endpoints
         run: |
-          ENDPOINTS=$(kubectl -n smoke-test get endpoints smoke-test -o jsonpath='{.subsets[*].addresses[*].ip}')
-          if [ -z "$ENDPOINTS" ]; then
-            echo "::error::Service smoke-test has no endpoints - its selector matches no Ready pod. helm template and kubeconform both passed this; only a real cluster catches it."
-            kubectl -n smoke-test get endpoints smoke-test -o yaml
-            kubectl -n smoke-test get pods -o wide
-            exit 1
-          fi
-          echo "Service smoke-test has real endpoints: ${ENDPOINTS}"
+          for i in $(seq 1 30); do
+            ENDPOINTS=$(kubectl -n smoke-test get endpoints smoke-test -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+            if [ -n "$ENDPOINTS" ]; then
+              echo "Service smoke-test has real endpoints: ${ENDPOINTS}"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Service smoke-test has no endpoints after 60s - its selector matches no Ready pod. helm template and kubeconform both passed this; only a real cluster catches it."
+          kubectl -n smoke-test get endpoints smoke-test -o yaml
+          kubectl -n smoke-test get pods -o wide
+          exit 1
 
       - name: helm uninstall
         if: always()
