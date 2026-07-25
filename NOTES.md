@@ -703,4 +703,19 @@ service repo, a real IAM role, and a real GitHub Environment with a
 reviewer added, exercised for real - same category of gap as the kind
 smoke test, flagged the same way rather than claimed as tested.
 
+**Witnessed on 2026-07-25:** triggering a prod-targeted run of
+`deploy.yml` (via the temporary `_test-prod-gate.yml` caller) showed the
+`deploy` job sitting at "Waiting for approval" with zero steps executed
+- not a step paused mid-run, the job itself never dispatched - confirming
+the GitHub Environment protection rule blocks execution before any code
+runs, including the OIDC/AWS step. After approving, execution began
+immediately and failed downstream at `Configure AWS credentials (OIDC)`
+with `Input required and not supplied: aws-region` - no real role/region
+configured on `prod` - proving it was the approval gate, not a missing-
+config accident, that had been the only thing standing between trigger
+and AWS the whole time. (First attempt at this test showed no pause at
+all - the `prod` environment existed but its "Required reviewers"
+checkbox had never actually been ticked/saved; fixed, then re-tested
+with the result above.)
+
 ---
