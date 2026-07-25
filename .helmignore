@@ -1,0 +1,15 @@
+# Patterns to ignore when building/linting/templating the chart.
+# Helm loads everything under the chart root by default - anything CI
+# tooling downloads or extracts into this directory (kubeconform, etc.)
+# needs to either live outside the chart root entirely, or be excluded
+# here as a second line of defense. See NOTES.md: a stray
+# kubeconform.tar.gz left in the repo root by an earlier ci.yml bug
+# broke every helm lint/template call in the validate job with
+# "chart file ... is larger than the maximum file size 5242880".
+.git/
+.github/
+*.tar.gz
+*.tgz
+kubeconform
+kind
+.helmignore

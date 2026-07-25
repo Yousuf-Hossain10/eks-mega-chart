@@ -1,24 +1,58 @@
 # Smoke-test-only overlay, used exclusively by the kind-smoke-test job in
 # ci.yml. values.yaml's image (yourorg/myapp) is a placeholder with
-# nothing real to pull, so this substitutes a small, real public image -
-# nginx - so the smoke test can prove the chart's actual Kubernetes
-# wiring (Deployment -> Pod -> Service, probes gating rollout, the
-# Service's selector actually matching real pods) against a container
-# that genuinely runs, not just against YAML that happens to parse.
+# nothing real to pull, so this substitutes a small, real public image
+# so the smoke test can prove the chart's actual Kubernetes wiring
+# (Deployment -> Pod -> Service, probes gating rollout, the Service's
+# selector actually matching real pods) against a container that
+# genuinely runs, not just against YAML that happens to parse.
 #
-# nginx does not serve /healthz or /ready - those are this chart's own
-# app-specific defaults, written for a real app that doesn't exist yet.
-# Pointing every probe at nginx's real welcome page (served at / on port
-# 80, both real defaults nginx actually listens on) is the honest choice
-# here: it proves the probes genuinely gate the rollout against a path
-# the container actually answers. Silently choosing an image that
-# answers every path regardless of what's asked (e.g. hashicorp/http-echo)
-# would make this job pass without ever exercising a probe path that
-# could plausibly be wrong - closer to papering over the mismatch than
-# fixing it.
+# THIS USED TO BE PLAIN nginx:1.25.4, AND IT FAILED THE FIRST REAL RUN.
+# helm install timed out after 3m ("context deadline exceeded") because
+# stock nginx cannot start under this chart's securityContext at all:
+#   - it needs to bind port 80, which needs CAP_NET_BIND_SERVICE, and
+#     capabilities.drop: [ALL] strips that regardless of UID
+#   - it's built to run as root; runAsNonRoot/runAsUser force it not to
+#   - it writes cache/pid files at startup; readOnlyRootFilesystem: true
+#     blocks that, and the chart only mounts a writable /tmp
+# runAsNonRoot, readOnlyRootFilesystem, and allowPrivilegeEscalation are
+# pinned with `const` in values.schema.json specifically so no overlay
+# can weaken them (see docs/opinions.md) - so "just loosen the security
+# context for this test" isn't an option; the schema rejects it before
+# it ever reaches Kubernetes, by design.
+#
+# nginxinc/nginx-unprivileged is a real, independently-maintained image
+# built specifically to run non-root in Kubernetes: it listens on 8080
+# (no privileged port, no capability needed) instead of 80. It still
+# writes cache/pid files at startup, so it still needs writable paths
+# under a read-only root - supplied here via the chart's existing,
+# already-generic volumeMounts/volumes passthrough, no template changes
+# needed. Every security setting stays exactly as strict as the base
+# chart requires; nothing here is a security-context override.
+#
+# Probes point at / on port 8080 - nginx-unprivileged's real welcome
+# page, not /healthz or /ready (this chart's own app-specific defaults,
+# written for a real app that doesn't exist yet). Deliberately not using
+# an image that answers every path regardless of what's asked (e.g.
+# hashicorp/http-echo) - that would make the probe-path assertion
+# untestable rather than genuinely exercised.
 image:
-  repository: nginx
+  repository: nginxinc/nginx-unprivileged
   tag: "1.25.4"
+
+service:
+  port: 8080
+
+volumeMounts:
+  - name: nginx-cache
+    mountPath: /var/cache/nginx
+  - name: nginx-run
+    mountPath: /var/run
+
+volumes:
+  - name: nginx-cache
+    emptyDir: {}
+  - name: nginx-run
+    emptyDir: {}
 
 livenessProbe:
   httpGet:

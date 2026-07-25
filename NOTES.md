@@ -588,3 +588,62 @@ before trusting this job - flagging that gap explicitly rather than
 reporting this as tested.
 
 ---
+
+## First real CI run: two failures, both root-caused from actual logs
+
+**`validate` (all three matrix legs) - kubeconform.tar.gz broke every
+chart load.** The install step downloaded `kubeconform.tar.gz` straight
+into the checkout directory (the chart root) and never deleted it after
+extracting the binary. `helm lint`/`helm template` load every file under
+the chart root as chart content, and hard-reject anything over 5MB:
+```
+[ERROR] templates/: chart file "kubeconform.tar.gz" is larger than the maximum file size 5242880
+```
+Reproduced locally by dropping a 6MB dummy `kubeconform.tar.gz` into the
+repo root and running `helm lint .` - failed identically. Fixed two ways:
+the install step now downloads and extracts entirely under `/tmp`, never
+touching the checkout directory at all (the actual fix); added
+`.helmignore` as a second line of defense in case anything else ever
+lands loose files in the chart root. Reran the dummy-file repro after
+adding `.helmignore` alone (without the /tmp fix) - confirmed it also
+independently prevents the failure.
+
+**`kind-smoke-test` - stock nginx cannot run under this chart's
+securityContext, full stop.** `helm install` timed out at 3m with a bare
+`context deadline exceeded` - true but uninformative on its own, since I
+hadn't added any diagnostics for an install-level failure (only for the
+endpoints check). Reasoned through why rather than guessing: stock nginx
+needs to bind port 80 (needs `CAP_NET_BIND_SERVICE`, which
+`capabilities.drop: [ALL]` strips regardless of UID), is built to run as
+root (`runAsNonRoot`/`runAsUser` force it not to), and writes cache/pid
+files at startup (`readOnlyRootFilesystem: true` blocks that, and the
+chart only mounts a writable `/tmp`). Checked whether the smoke overlay
+could just relax the security context for this one test - it can't, by
+design: `runAsNonRoot`, `readOnlyRootFilesystem`, and
+`allowPrivilegeEscalation` are pinned with `const` in
+`values.schema.json` specifically so no overlay can weaken them (the
+platform-invariant decision in `docs/opinions.md`). Loosening the schema
+to work around it would have undone that decision unilaterally, for a
+smoke test's convenience.
+
+Switched the smoke overlay to `nginxinc/nginx-unprivileged:1.25.4`
+instead - confirmed the image and tag actually exist on Docker Hub via
+its API before relying on it. It listens on 8080 (no privileged port, no
+capability needed) and is built for exactly this non-root case; it still
+needs writable cache/pid paths, supplied via the chart's existing,
+already-verified-working `volumeMounts`/`volumes` passthrough - no
+template changes. Every security setting stays exactly as strict as the
+base chart requires. Verified locally everything short of the live run:
+rendered output shows `containerPort: 8080`, the Service's `targetPort`
+correctly following it, `securityContext` completely unchanged from the
+chart's own defaults, and the extra cache/run emptyDir mounts landing
+alongside `/tmp`.
+
+**Could not verify the nginx-unprivileged startup sequence itself** -
+still no Docker in this sandbox. Added a "Dump cluster state (on
+failure)" step (`kubectl describe`, current + previous container logs,
+events, sorted) that runs before cleanup on any failure, specifically so
+if this configuration is still wrong in some detail, the next log says
+exactly what, instead of another bare timeout.
+
+---

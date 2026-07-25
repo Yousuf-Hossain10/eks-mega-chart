@@ -56,12 +56,21 @@ jobs:
         with:
           version: ${{ env.HELM_VERSION }}
 
+      # Downloaded and extracted entirely under /tmp - never the checkout
+      # directory. Helm loads every file in the chart root when linting/
+      # templating, and hard-rejects anything over 5MB as chart content;
+      # this used to download kubeconform.tar.gz straight into the repo
+      # root and never deleted it, which broke every helm lint/template
+      # call in this job with "chart file kubeconform.tar.gz is larger
+      # than the maximum file size 5242880." A .helmignore now exists too
+      # as a second line of defense, but not needing it in the first
+      # place is the real fix.
       - name: Install kubeconform
         run: |
-          curl -sSL -o kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
-          tar -xzf kubeconform.tar.gz kubeconform
-          chmod +x kubeconform
-          sudo mv kubeconform /usr/local/bin/kubeconform
+          curl -sSL -o /tmp/kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+          chmod +x /tmp/kubeconform
+          sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
 
       - name: helm lint
         run: |
@@ -216,6 +225,27 @@ jobs:
           kubectl -n smoke-test get endpoints smoke-test -o yaml
           kubectl -n smoke-test get pods -o wide
           exit 1
+
+      # Runs only on failure, before cleanup tears the cluster down. The
+      # first real run of this job failed at "helm install" with a bare
+      # "context deadline exceeded" - true, but useless on its own: it
+      # doesn't say whether the pod never scheduled, crash-looped, failed
+      # its probes, or couldn't pull the image. This step exists so the
+      # next failure, whatever it is, is diagnosable from the log alone
+      # instead of needing another round-trip to guess and re-run.
+      - name: Dump cluster state (on failure)
+        if: failure()
+        run: |
+          echo "--- pods ---"
+          kubectl -n smoke-test get pods -o wide || true
+          echo "--- pod describe ---"
+          kubectl -n smoke-test describe pods || true
+          echo "--- current container logs ---"
+          kubectl -n smoke-test logs -l app.kubernetes.io/instance=smoke --all-containers --tail=200 || true
+          echo "--- previous container logs (if it crash-looped) ---"
+          kubectl -n smoke-test logs -l app.kubernetes.io/instance=smoke --all-containers --previous --tail=200 || true
+          echo "--- events, most recent last ---"
+          kubectl -n smoke-test get events --sort-by=.lastTimestamp || true
 
       - name: helm uninstall
         if: always()
