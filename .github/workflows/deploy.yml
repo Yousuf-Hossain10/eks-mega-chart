@@ -60,8 +60,71 @@ jobs:
             exit 1
           fi
 
+  # Real, in-workflow enforcement that a failed scan blocks a deploy -
+  # deliberately NOT relying on branch protection on eks-mega-chart's
+  # own master. That would only prove the chart TEMPLATE is clean; it
+  # says nothing about the service's own application image (the thing
+  # actually being deployed via inputs.image_tag), and a caller can
+  # override chart_ref to any ref anyway. This job scans the real image
+  # this specific run is about to ship, and deploy needs: it, the same
+  # way it needs: validate-inputs - no separate repo setting to configure
+  # or forget, no coupling to rely on that could quietly stop applying.
+  scan-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout calling service repo (its own values file)
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          TRIVY_VERSION=v0.72.0
+          curl -sSL -o /tmp/trivy.tar.gz "https://github.com/aquasecurity/trivy/releases/download/${TRIVY_VERSION}/trivy_${TRIVY_VERSION#v}_Linux-64bit.tar.gz"
+          tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
+          chmod +x /tmp/trivy
+          sudo mv /tmp/trivy /usr/local/bin/trivy
+
+      # Pulled from the caller's own values-<environment>.yaml, not
+      # passed as a separate input - there's exactly one place a
+      # service's image repository is already declared, and asking
+      # callers to repeat it as a second input would let the two drift.
+      # Known limitation: assumes the conventional `image:\n  repository:
+      # <value>` shape every values file on this platform uses so far -
+      # not a full YAML parser. If a values file ever legitimately
+      # deviates from that shape, this step needs to grow with it.
+      - name: Determine the image being deployed
+        id: image
+        run: |
+          VALUES_FILE="values-${{ inputs.environment }}.yaml"
+          IMAGE_REPO=$(grep -A5 "^image:" "$VALUES_FILE" | grep "repository:" | head -1 | sed -E 's/.*repository:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/')
+          if [ -z "$IMAGE_REPO" ]; then
+            echo "::error::Could not find image.repository in ${VALUES_FILE} - cannot scan without knowing what image is being deployed."
+            exit 1
+          fi
+          echo "image=${IMAGE_REPO}:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+
+      # --ignore-unfixed: never block on a CVE with no vendor patch
+      # anywhere - see eks-mega-chart's .trivyignore header for the full
+      # policy argument. A .trivyignore in the CALLING (service) repo's
+      # own root is used if present, for that service's own reviewed,
+      # dated exceptions - eks-mega-chart's own .trivyignore is scoped to
+      # its demo image and is never applied here, that would be someone
+      # else's exceptions applied to this service's real image.
+      - name: Scan the image being deployed
+        run: |
+          IGNOREFILE_ARGS=""
+          if [ -f .trivyignore ]; then
+            IGNOREFILE_ARGS="--ignorefile .trivyignore"
+          fi
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --scanners vuln \
+            $IGNOREFILE_ARGS \
+            "${{ steps.image.outputs.image }}"
+
   deploy:
-    needs: validate-inputs
+    needs: [validate-inputs, scan-image]
     runs-on: ubuntu-latest
     # This is the approval gate. dev and staging are separate GitHub
     # Environments too (so each gets its own scoped AWS role/region/

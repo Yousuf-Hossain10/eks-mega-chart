@@ -809,3 +809,59 @@ has to be an ongoing operational habit, not a one-time task, than any
 amount of abstract reasoning would have been.
 
 ---
+
+## Day 5 close-out: branch protection was the wrong tool for scan enforcement
+
+**Asked to link `ci.yml`'s scans to `deploy.yml` "the same way we closed
+the approval gate: repo settings, not YAML."** Traced it precisely
+before implementing anything, and the honest answer was no - required
+status checks on `eks-mega-chart`'s `master` only gate merging into
+*this* repo. Two separate reasons it doesn't reach the deploy path:
+`chart_ref` is caller-supplied and defaults to `master`, but nothing
+stops a caller from pointing it anywhere; and more fundamentally,
+`ci.yml`'s scans check the chart template and a fixed demo image, never
+the *service's own application image* - the actual thing `deploy.yml`
+ships via `inputs.image_tag`. A fully protected `master` on this repo
+says nothing about whether a service's own image was ever scanned.
+
+**Real fix: a `needs:` link inside `deploy.yml` itself**, not a repo
+setting. Added a `scan-image` job with no `environment:` of its own
+(same reasoning as `validate-inputs` - it must run before the gate, not
+inside it), which extracts `image.repository` from the caller's own
+`values-<environment>.yaml` (grep/sed, not a full YAML parser -
+documented limitation: assumes the conventional `image:\n  repository:`
+shape every values file on this platform uses so far), constructs
+`<repository>:<image_tag>` - the literal image this specific run is
+about to deploy - and runs `trivy image` against it with
+`--ignore-unfixed`. If a `.trivyignore` exists in the *calling* repo's
+own root, it's used; `eks-mega-chart`'s own `.trivyignore` (scoped to
+its demo image's specific CVEs) is deliberately never applied here, since
+that would silently apply someone else's exceptions to a different
+service's real image. `deploy` now `needs: [validate-inputs, scan-image]`
+- structurally cannot reach the AWS credential step without this scan
+succeeding, regardless of branch protection, regardless of `chart_ref`,
+regardless of which repo is calling it.
+
+**Verified as far as possible without a live trigger, and no further -
+being precise about the line, not blurring it.** Confirmed: `deploy.yml`
+is valid YAML with the `needs:` link present; the extraction logic
+correctly pulls `yourorg/sample-api` out of
+`examples/sample-api/values-dev.yaml`; `trivy image` correctly errors on
+that placeholder repository (`UNAUTHORIZED`, since it isn't a real image
+on Docker Hub) - a different, also-correct failure mode from "found real
+vulnerabilities," and an honest reminder that `examples/sample-api` still
+has no real image behind it, so a full "scan passes clean, deploy
+proceeds" run has never actually been exercised end to end. **Not
+verified:** this workflow has never actually been triggered - not once,
+not even a failing attempt - unlike the approval gate, which was
+genuinely triggered and watched pausing before being marked resolved.
+
+**Docs updated to match exactly that boundary, not rounded up.** The
+enforcement *design* is now correct and no longer dependent on a repo
+setting that couldn't have delivered on the claim anyway - real
+progress, worth recording. But per explicit instruction this session
+("don't flip it to satisfy the checklist"), the pitch-line box stays
+unchecked: a `needs:` link that has never once executed is a stronger
+design than before, not yet a witnessed fact.
+
+---
