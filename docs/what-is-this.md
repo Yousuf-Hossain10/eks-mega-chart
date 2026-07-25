@@ -1,18 +1,25 @@
 # What Is This, Actually?
 
-> **Status note (updated Day 4):** this document still describes the
-> project's target design in places, not only what's built and verified
-> today — but less of it than before. Step 4 ("safe test environment") and
-> Step 5 (a human-approval gate before production) are now real:
-> `.github/workflows/deploy.yml` is a reusable `workflow_call` workflow
-> with `dev`/`staging`/`prod` as separate GitHub Environments, `dev`
-> deploying automatically and `prod` gated behind that environment's
-> required-reviewer protection rule. The comparison table's "Path to
-> production" row is accurate now. What's still not real: **Step 3**
-> (automatic security scanning) — neither `ci.yml` nor `deploy.yml` runs
-> any code or container scanner, so the comparison table's "Code and
-> container security scanning" row and the closing pitch line's "nobody
-> can skip the scan" are both still aspirational. See
+> **Status note (updated Day 5):** Steps 3, 4, and 5 of the worked example
+> are now all real, individually. Step 3 (automatic security scanning):
+> `ci.yml` runs Trivy misconfiguration and vulnerability scans, both
+> gating on HIGH/CRITICAL, both proven able to actually fail (not just
+> run) against deliberately bad input before being trusted. Step 4 (safe
+> test environment) and Step 5 (human-approval gate): `deploy.yml` is a
+> reusable `workflow_call` workflow with `dev`/`staging`/`prod` as
+> separate GitHub Environments, `dev` deploying automatically and `prod`
+> gated behind a required-reviewer rule — witnessed live, not just built
+> (see NOTES.md, "Witnessed on 2026-07-25"). The comparison table's "Path
+> to production" and "Code and container security scanning" rows are both
+> accurate now.
+>
+> **What's still not real: the closing pitch line's "nobody CAN skip the
+> scan or the approval."** Both mechanisms work individually, but they're
+> not linked to each other or to the deploy path — `ci.yml` and
+> `deploy.yml` have zero coupling (no `needs:`, no shared trigger), so a
+> failed scan does not currently stop a deploy from running. That link
+> needs branch-protection required-status-checks on the calling repo, not
+> configured or verified yet. See
 > [gap-tracker.md](gap-tracker.md) for the exact, current list.
 
 ## The problem, before any of the solution

@@ -6,11 +6,19 @@ today. Each box is one overstatement, tied to where it appears in the
 explainer. Tick a box only once the underlying thing is real — implemented,
 merged, and actually exercised, not just written.
 
-- [ ] **Automatic security scanning on push** (what-is-this.md, worked
+- [x] **Automatic security scanning on push** (what-is-this.md, worked
       example Step 3: "the pipeline stops right there — nothing broken or
       unsafe reaches a server"; also the comparison table row "Code and
-      container security scanning"). `deploy.yml` currently runs `helm lint`
-      and nothing else — no code scanner, no container image scan.
+      container security scanning"). **Resolved (Day 5):** `ci.yml` now
+      has `trivy-config-scan` (misconfiguration scanning against the
+      rendered chart) and `trivy-image-scan` (vulnerability scanning
+      against a real pinned image), both gating on HIGH/CRITICAL. Both
+      proven capable of actually failing, not just running: a deliberately
+      insecure fixture and a deliberately old/vulnerable image each verified
+      to produce real findings and a nonzero exit code before either job
+      was trusted. See NOTES.md for the full design, including the
+      `.trivyignore`/`--ignore-unfixed` policy for CVEs that can't be
+      fixed immediately.
 
 - [x] **Automatic deploy to a safe dev/test environment** (what-is-this.md,
       worked example Step 4: "the pipeline automatically installs Priya's
@@ -38,20 +46,35 @@ merged, and actually exercised, not just written.
       job (no `environment:` of its own) rejects anything except exactly
       `dev`/`staging`/`prod` before the gated job ever runs, so a typo
       can't silently create an unprotected ad-hoc environment and skip the
-      gate that way. See NOTES.md for the full design and, importantly,
-      what's *not* verified yet: the actual "waiting for approval" UI
-      behavior, a real reviewer approving a real run, and the OIDC trust
-      policy accepting the token, have not been exercised live — this is
-      implemented and reasoned through, not yet watched happen.
+      gate that way. **Update:** this has since been witnessed live, not
+      just implemented — see NOTES.md, "Witnessed on 2026-07-25": a real
+      prod-targeted run paused at "Waiting for approval" with zero steps
+      executed, then proceeded only after approval and failed downstream
+      at the AWS step (no real role configured), confirming the gate
+      itself blocks execution, not just config. The first attempt at this
+      test showed no pause at all — caught and fixed a real gap (the
+      `prod` environment's "Required reviewers" checkbox had never
+      actually been saved). Self-review prevention specifically remains
+      configured-but-not-runtime-verified — see NOTES.md for why that
+      one structurally requires a second reviewer.
 
 - [ ] **"Nobody can skip the scan or skip the approval"** (what-is-this.md,
-      60-second spoken pitch, closing line). Still false, but for a
-      narrower reason now than when this was written. The approval half is
-      real (see above). The **scan** half is not: neither `ci.yml` nor
-      `deploy.yml` runs any code or container security scanner — no Trivy,
-      no Snyk, no CodeQL, nothing that checks for known CVEs. `ci.yml`
-      validates the chart (lint, template, kubeconform, schema, unittest,
-      a kind smoke test); none of that is a security scan. Don't tick this
-      one until a real scanner exists in the pipeline and actually gates
-      it — the same "implemented and exercised, not just written" bar as
-      everything else on this list.
+      60-second spoken pitch, closing line). Still false — for a narrower,
+      more precise reason again (Day 3: three unbuilt things; Day 4: one
+      unbuilt thing; Day 5: zero unbuilt things, one missing *link*). Both
+      halves now exist and both are individually proven to work: the scan
+      genuinely fails on real findings (Day 5), the approval gate
+      genuinely blocks execution (Day 4, witnessed live). What's still
+      missing is **enforcement that ties them together and to the deploy
+      path**. Checked directly: `ci.yml` and `deploy.yml` have zero
+      coupling — no `needs:`, no shared trigger, nothing. A scan failure
+      in `ci.yml` does not currently stop `deploy.yml` (or a service's
+      caller workflow) from running. For "nobody can skip the scan" to be
+      literally true, `ci.yml`'s scan jobs would need to be configured as
+      **required status checks on the calling repo's branch protection**
+      (a repo Settings change, same category as the environment protection
+      rules from Day 4 — not something expressible in this YAML alone),
+      and ideally a deploy should only be able to target a commit that
+      actually passed CI. Neither is configured or verified yet. Don't
+      tick this until that link exists and has been watched actually block
+      something, the same bar as everything else on this list.
