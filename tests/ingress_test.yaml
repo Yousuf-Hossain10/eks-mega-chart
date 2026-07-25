@@ -1,0 +1,30 @@
+suite: ingress.yaml renders only when enabled
+release:
+  name: test
+tests:
+  - it: no Ingress when ingress is disabled (the chart's own default)
+    set:
+      image.tag: a1b2c3d
+    template: templates/ingress.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a real Ingress when enabled
+    set:
+      image.tag: a1b2c3d
+      ingress.enabled: true
+      ingress.hosts:
+        - host: example.mycompany.com
+          paths:
+            - path: /
+              pathType: Prefix
+    template: templates/ingress.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Ingress
+      - equal:
+          path: spec.rules[0].host
+          value: example.mycompany.com

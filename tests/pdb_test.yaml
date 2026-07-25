@@ -1,0 +1,32 @@
+suite: pdb.yaml does not nil-pointer (Day 1 regression)
+release:
+  name: test
+tests:
+  - it: REGRESSION (Day 1) - renders cleanly with the chart's own default values, pdb disabled
+    # This is deliberately the simplest possible render: the chart's own
+    # bundled values.yaml, no overrides. Day 1's bug was that
+    # .Values.pdb.enabled had no `pdb` key anywhere in values.yaml at
+    # all, so this exact render nil-pointered on every single install,
+    # not just an edge case. If someone removes the `pdb` key from
+    # values.yaml again, this is the test that catches it.
+    set:
+      image.tag: a1b2c3d
+    template: templates/pdb.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a real PodDisruptionBudget when explicitly enabled
+    set:
+      image.tag: a1b2c3d
+      pdb.enabled: true
+      pdb.minAvailable: 2
+    template: templates/pdb.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: spec.minAvailable
+          value: 2

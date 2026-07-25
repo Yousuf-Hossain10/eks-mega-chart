@@ -125,12 +125,9 @@ jobs:
       - name: Install helm-unittest plugin
         run: helm plugin install https://github.com/helm-unittest/helm-unittest --version "${HELM_UNITTEST_VERSION}"
 
-      # No test suites exist yet (tests/ currently holds schema-validation
-      # fixtures, not unittest specs - see the note in NOTES.md about that
-      # shared directory). This job exists so the job itself, the plugin
-      # install, and the runner all go green now, before any real
-      # assertions are added, so the next prompt's tests land on a known-
-      # working harness instead of debugging the harness and the tests
-      # at the same time.
+      # tests/*_test.yaml are real unittest specs now (deployment, hpa,
+      # ingress, pdb). tests/invalid-*-demo.yaml live in the same
+      # directory but aren't test suites - helm-unittest's default glob
+      # is tests/*_test.yaml, so it never touches them; see NOTES.md.
       - name: Run helm unittest
         run: helm unittest .

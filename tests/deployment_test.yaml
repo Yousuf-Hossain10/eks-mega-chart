@@ -1,0 +1,147 @@
+suite: deployment container contract
+release:
+  name: test
+tests:
+  - it: dev - probes, securityContext, and resources match the platform contract
+    set:
+      image.tag: a1b2c3d
+    template: templates/deployment.yaml
+    asserts:
+      - exists:
+          path: spec.template.spec.containers[0].livenessProbe
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /healthz
+      - exists:
+          path: spec.template.spec.containers[0].readinessProbe
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /ready
+      - exists:
+          path: spec.template.spec.containers[0].startupProbe
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /healthz
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value: ["ALL"]
+      - exists:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+      - notExists:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 256Mi
+
+  - it: staging - same contract, staging's own resource numbers
+    set:
+      image.tag: a1b2c3d
+    values:
+      - ../values-staging.yaml
+    template: templates/deployment.yaml
+    asserts:
+      - exists:
+          path: spec.template.spec.containers[0].livenessProbe
+      - exists:
+          path: spec.template.spec.containers[0].readinessProbe
+      - exists:
+          path: spec.template.spec.containers[0].startupProbe
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value: ["ALL"]
+      - exists:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+      - notExists:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 384Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 384Mi
+
+  - it: prod - same contract, prod's own resource numbers
+    set:
+      image.tag: a1b2c3d
+    values:
+      - ../values-prod.yaml
+    template: templates/deployment.yaml
+    asserts:
+      - exists:
+          path: spec.template.spec.containers[0].livenessProbe
+      - exists:
+          path: spec.template.spec.containers[0].readinessProbe
+      - exists:
+          path: spec.template.spec.containers[0].startupProbe
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value: ["ALL"]
+      - exists:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+      - notExists:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 512Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 512Mi
+
+  - it: REGRESSION (Day 1) - an empty configData must not leave envFrom pointing at a missing ConfigMap
+    # configData: {} (an empty map) is NOT what this needs - Helm merges
+    # maps recursively, so an empty-map override contributes no keys to
+    # remove and the three keys inherited from values.yaml would still be
+    # there, meaning the ConfigMap would still get created and this test
+    # would pass whether or not the bug exists. Verified this directly
+    # before writing the assertion. `null` is what actually unsets an
+    # inherited map - same lesson as the secretData fix in values-prod.yaml.
+    set:
+      image.tag: a1b2c3d
+      configData: null
+    template: templates/deployment.yaml
+    asserts:
+      # secretData is still the real default here, so envFrom should have
+      # exactly one entry - secretRef - and no configMapRef at all. On the
+      # pre-fix template, envFrom was unconditional and always had both,
+      # regardless of whether the ConfigMap it names actually got created.
+      - lengthEqual:
+          path: spec.template.spec.containers[0].envFrom
+          count: 1
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].secretRef.name
+          value: test-eks-mega-chart-secret
+      - notContains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: test-eks-mega-chart-config

@@ -492,3 +492,48 @@ in this session had been silently wrong - a stray `echo;` before
 question, nothing in between).
 
 ---
+
+## Real helm-unittest specs added; both Day 1 regressions proven to actually catch the bug
+
+**Four suites, ten tests:** `tests/deployment_test.yaml` (probes render
+for dev/staging/prod, securityContext pinned fields, ADR-0002 resources
+- no CPU limit, memory request==limit - plus the envFrom regression),
+`tests/pdb_test.yaml` (the pdb nil-pointer regression, plus a positive
+case), `tests/hpa_test.yaml` and `tests/ingress_test.yaml` (each renders
+only when its `enabled` flag is set).
+
+**A test written against the literal wording would have proven nothing.**
+The instruction was "setting `configData: {}`" - tried that first,
+directly. It passed with `envFrom` showing 2 entries, not the expected 1,
+because an empty-map `set:` override merges with (doesn't clear) the
+three keys `configData` already has by default in `values.yaml` - same
+merge-semantics gotcha as the `secretData` fix. Verified this directly
+with a throwaway `helm template --set-json` before touching the test
+file. `configData: null` is what actually empties it; that's what the
+test uses, with a comment explaining why `{}` wouldn't have worked.
+
+**Both regression tests were run against the real Day 1 broken commits,
+not synthetic approximations.** For the envFrom bug: swapped in
+`templates/deployment.yaml` from `20b2be6` (the commit immediately before
+the fix), reran the suite, watched the exact three assertions fail with
+`envFrom` showing both `configMapRef` and `secretRef` regardless of
+`configData` being null - restored the current file, reran, green. For
+the pdb bug: swapped in `values.yaml` from `289a309` (immediately before
+`bbbd6d3` added the `pdb` key) - and had to *also* temporarily remove
+`values.schema.json`, since the schema (added later, requires `pdb` as
+a top-level key) now blocks this exact scenario a second, earlier way
+and would have made the test fail for the wrong reason (a schema
+rejection, not the template nil pointer). With both removed, the test
+failed with the literal historical error - `nil pointer evaluating
+interface {}.enabled` at `templates/pdb.yaml:1:14` - confirming this is
+provably the same bug, not a look-alike. Restored both files, reran,
+green.
+
+**What it taught me:** the schema now provides a second line of defense
+against some of the same regressions the unittest suite exists to catch
+- which is good defense-in-depth, but it means an honest "does this test
+still catch the original bug" check has to account for every later
+guardrail that might mask it, not just revert the one file the original
+fix touched.
+
+---
