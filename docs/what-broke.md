@@ -177,3 +177,27 @@ reviewers" checkbox had been checked in the UI without ever clicking the separat
 it live and watching nothing happen; fixed by re-saving the rule and re-triggering,
 which then correctly paused at "Waiting for approval" with zero steps executed
 before approval.
+
+**A branch explicitly labeled "never merge" reached `master` anyway.** A scratch
+branch (`test/scan-gate-fail`) carried "never merge to master, temporary" in its
+own commit message and file headers — that looked like enough. It wasn't: GitHub's
+routine post-push "Create a pull request" prompt got clicked through, and PR #2
+landed both scratch files directly in the real tree. Caught only because the next
+`git push` came back rejected as diverged, and reading exactly what `origin/master`
+had gained (`git show --stat` on the merge commit) before reacting, instead of
+force-pushing past the rejection. Fixed with a plain subtractive commit removing
+the two files — no rebase, no force-push, nothing rewritten. The real lesson:
+nothing automated was ever going to catch this (branch protection can't stop a
+voluntary PR merge nobody required), so the actual safety net was reading the diff
+before acting on a push rejection, not any gate in the pipeline.
+
+**Required status checks turned out to gate everyone except the one person who
+mattered.** Pushing the merge-and-cleanup commit straight to `master` printed
+`Bypassed rule violations for refs/heads/master: 5 of 5 required status checks are
+expected` — a live, first-person hit of a caveat that had only ever been discussed
+theoretically, back on Day 4, in the OIDC/approval-gate interview answer: a repo
+admin's own push bypasses required status checks by default, no matter how
+correctly they're configured. It looked like a blanket rule; the real scope is
+"gates everyone except whoever holds admin," and closing that particular gap is a
+repo-permissions decision — who's allowed to be an admin — not anything branch
+protection settings or workflow YAML can express.
