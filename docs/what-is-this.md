@@ -1,30 +1,34 @@
 # What Is This, Actually?
 
-> **Status note (updated Day 5):** Steps 3, 4, and 5 of the worked example
-> are now all real, individually. Step 3 (automatic security scanning):
-> `ci.yml` runs Trivy misconfiguration and vulnerability scans, both
-> gating on HIGH/CRITICAL, both proven able to actually fail (not just
-> run) against deliberately bad input before being trusted. Step 4 (safe
-> test environment) and Step 5 (human-approval gate): `deploy.yml` is a
-> reusable `workflow_call` workflow with `dev`/`staging`/`prod` as
-> separate GitHub Environments, `dev` deploying automatically and `prod`
-> gated behind a required-reviewer rule — witnessed live, not just built
-> (see NOTES.md, "Witnessed on 2026-07-25"). The comparison table's "Path
-> to production" and "Code and container security scanning" rows are both
-> accurate now.
+> **Status note (updated Day 5, close-out):** Steps 3, 4, and 5 of the
+> worked example are real, and — as of Day 5's close-out — so is the
+> closing pitch line. `ci.yml` runs Trivy misconfiguration and
+> vulnerability scans gating on HIGH/CRITICAL, each proven able to
+> actually fail before being trusted. `deploy.yml` is a reusable
+> `workflow_call` workflow with `dev`/`staging`/`prod` as separate GitHub
+> Environments, `dev` deploying automatically and `prod` gated behind a
+> required-reviewer rule — witnessed live (NOTES.md, "Witnessed on
+> 2026-07-25"). A third piece, `deploy.yml`'s own `scan-image` job, scans
+> the actual image a deploy is about to ship and `deploy`
+> `needs:` it — checked, branch protection on this repo's `master`
+> would *not* have closed this gap (it never touches a service's own
+> image), so this in-workflow link was built instead. Tested live on two
+> scratch branches, never merged: a deliberately vulnerable image made
+> `scan-image` fail and `deploy` show skipped with zero steps executed
+> (confirmed by screenshot, reproduced on a re-run); a known-clean image
+> let `scan-image` pass and `deploy` actually run, failing only
+> downstream at the AWS step. Both directions witnessed, not just
+> designed. The comparison table's "Path to production" and "Code and
+> container security scanning" rows, and the closing pitch line itself,
+> are all accurate now.
 >
-> **What's still not real: the closing pitch line's "nobody CAN skip the
-> scan or the approval."** Checked whether branch protection on this
-> repo's `master` would close it (the obvious repo-settings fix) — it
-> wouldn't have: it only gates merges into this repo, never touches a
-> service's own application image, and doesn't stop a caller overriding
-> which ref of the chart it pulls. Built the actual fix instead:
-> `deploy.yml` now has a `scan-image` job that scans the real image being
-> deployed, and `deploy` structurally can't run without it succeeding
-> (`needs:`, not a repo setting). That's the right mechanism, verified as
-> design-correct — but it has never been triggered even once, so it isn't
-> a witnessed fact yet, only a correct design. See
-> [gap-tracker.md](gap-tracker.md) for the exact, current list.
+> **One deliberately narrower thing stays open:** self-review prevention
+> on the approval gate (a distinct setting from the gate itself) remains
+> configured but not runtime-verified — a solo maintainer structurally
+> cannot exercise a control that requires a second person. That was never
+> part of the "skip the scan or skip the approval" claim and isn't rolled
+> into this closure. See [gap-tracker.md](gap-tracker.md) for the exact,
+> current list.
 
 ## The problem, before any of the solution
 

@@ -58,10 +58,8 @@ merged, and actually exercised, not just written.
       configured-but-not-runtime-verified — see NOTES.md for why that
       one structurally requires a second reviewer.
 
-- [ ] **"Nobody can skip the scan or skip the approval"** (what-is-this.md,
-      60-second spoken pitch, closing line). Still false, but the shape of
-      the remaining gap changed on Day 5 and is worth recording precisely
-      rather than rounding up.
+- [x] **"Nobody can skip the scan or skip the approval"** (what-is-this.md,
+      60-second spoken pitch, closing line). **Resolved (Day 5).**
 
       First checked whether **branch protection on `eks-mega-chart`'s
       `master`** (required status checks) would close it — the obvious,
@@ -75,20 +73,41 @@ merged, and actually exercised, not just written.
       `inputs.image_tag`. A fully protected `master` here would have
       flipped this checkbox without making the underlying claim true.
 
-      **Built the real fix instead:** `deploy.yml` now has a `scan-image`
-      job that extracts the caller's actual image (from their own
+      **Built the real fix instead:** `deploy.yml` has a `scan-image` job
+      that extracts the caller's actual image (from their own
       `values-<environment>.yaml`) and runs `trivy image` against it;
-      `deploy` `needs: [validate-inputs, scan-image]`. This is in-workflow
+      `deploy` `needs: [validate-inputs, scan-image]`. In-workflow
       enforcement, independent of repo settings, `chart_ref`, or which
-      repo is calling — structurally the right mechanism, not the one that
-      just turns the box green.
+      repo is calling.
 
-      **Still unchecked because it has never been triggered — not once,**
-      unlike the approval gate, which was genuinely run and watched
-      pausing before that box was marked resolved. The design is now
-      correct; that's real, recorded progress. It is not yet a witnessed
-      fact. Also worth naming: `examples/sample-api` still has no real
-      image behind it, so even a live trigger today would hit
-      `UNAUTHORIZED` at the image-pull step rather than demonstrate a
-      genuine clean-scan-then-deploy pass — a real image is needed before
-      this can be fully exercised, not just re-run.
+      **Then witnessed it working, live, in both directions** — not left
+      as a design claim. Two scratch branches (never merged), same
+      `environment: dev` to isolate this from the already-witnessed
+      approval gate:
+      - `test/scan-gate-fail`: pointed at `nginx:1.14.0` (146+ real
+        HIGH/CRITICAL CVEs). Job graph, confirmed by screenshot:
+        `scan-image` failed (110 real findings on this run), `deploy`
+        shown with a distinct skip icon, connected downstream by the
+        graph's own arrow, zero steps executed. Reproduced on a re-run
+        of the same commit.
+      - `test/scan-gate-pass`: pointed at
+        `nginxinc/nginx-unprivileged:1.29.2-alpine`, the exact image
+        `ci.yml`'s own scan already verified clean. `scan-image`
+        produced no failure annotation; `deploy` produced a real
+        `Input required and not supplied: aws-region` annotation,
+        meaning it genuinely executed and reached the AWS step before
+        failing — proving it ran strictly *after* `scan-image`, not
+        instead of it.
+
+      See NOTES.md, "Day 5 close-out, for real" for the full record,
+      including a real, separate, still-open gap this surfaced:
+      `deploy.yml` expects `values-<environment>.yaml`, but this repo's
+      own root has never had a properly-named `values-dev.yaml` — worked
+      around with scratch files for this test, not yet fixed for real.
+
+      **Deliberately still excluded from this claim's scope:** self-review
+      prevention on the approval gate remains configured-but-not-runtime-
+      verified — a solo maintainer structurally cannot exercise a
+      two-person control. That was never part of "skip the scan or skip
+      the approval" and stays flagged on its own in the entry above, not
+      smoothed into this one.

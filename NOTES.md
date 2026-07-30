@@ -865,3 +865,64 @@ unchecked: a `needs:` link that has never once executed is a stronger
 design than before, not yet a witnessed fact.
 
 ---
+
+## Day 5 close-out, for real: scan-image witnessed gating deploy, both directions
+
+**Caught my own contradiction before it stood.** Said in one turn that
+`ci.yml` and `deploy.yml` have zero coupling; two turns later said
+enforcement lives in `deploy.yml`'s `needs: [validate-inputs,
+scan-image]`. Challenged directly on whether those two statements
+contradict. They didn't, but only because they were about two different
+things I hadn't distinguished clearly enough: `ci.yml`'s own scan jobs
+(`trivy-config-scan`, `trivy-image-scan`) still have zero coupling to
+`deploy.yml`, unchanged, by design. `scan-image` is a third, separate
+job living inside `deploy.yml` itself - same-file `needs:`, not a
+cross-workflow reference, which isn't possible and was never attempted.
+Verified directly with `grep`/job-list output before answering, not from
+memory.
+
+**Then witnessed it, both directions, live.** Built two scratch
+branches (never merged to `master`): `test/scan-gate-fail` (points a
+scratch `values-dev.yaml` at `nginx:1.14.0`, the same known-vulnerable
+image from Day 5's earlier work) and `test/scan-gate-pass` (points at
+`nginxinc/nginx-unprivileged:1.29.2-alpine`, the exact image+tag
+`ci.yml`'s own scan already verified clean, with this repo's own
+`.trivyignore` applying automatically since it's a same-repo checkout).
+Used `environment: dev` deliberately for both, to isolate the
+`scan-image` question from the already-witnessed approval gate.
+
+Surfaced a real, separate gap while building the fixtures: `deploy.yml`
+expects `values-<environment>.yaml` (e.g. `values-dev.yaml`), but this
+repo's own root has only ever had the unsuffixed `values.yaml` for
+"dev" - an inconsistency with the convention `examples/sample-api`
+already follows correctly. Worked around it for these scratch branches
+with throwaway `values-dev.yaml` files; the real fix (renaming or adding
+a proper `values-dev.yaml` at this repo's own root) is still open,
+tracked here so it isn't forgotten.
+
+**Results, confirmed from the actual GitHub UI, not inferred:**
+- `test/scan-gate-fail`, run #4 (re-run of commit `dd83c13`): job graph
+  shows `validate-inputs` succeeded, `scan-image` failed (110 real
+  vulnerabilities - 75 HIGH, 35 CRITICAL - against `nginx:1.14.0`'s EOL
+  Debian 9.5 base, confirmed from the full scan log), and `deploy` shown
+  with a distinct skip icon, connected downstream by the graph's own
+  arrow, zero steps executed. Reproduced on a re-run of the same commit,
+  not a one-off.
+- `test/scan-gate-pass`, commit `12ee0c9`: `scan-image` produced no
+  failure annotation (passed); `deploy` produced a real
+  `Input required and not supplied: aws-region` annotation, meaning it
+  actually executed checkout and reached the AWS credentials step before
+  failing - the same downstream failure as the Day 4 gate test, now
+  proven to happen strictly after `scan-image`, not instead of it.
+
+**This closes the pitch-line gap for real.** "Nobody can skip the scan
+or the approval" - the scan mechanism works (Day 5, `ci.yml`), the
+approval gate works (Day 4, witnessed), and now the link between a scan
+result and whether `deploy` even starts is witnessed too, in both
+directions, not just designed. The one deliberately-separate, still-open
+caveat: self-review prevention specifically remains configured-but-not-
+runtime-verified (a solo maintainer structurally cannot exercise a
+two-person control) - that was never part of this claim's scope and
+stays flagged on its own, not smoothed into this closure.
+
+---
