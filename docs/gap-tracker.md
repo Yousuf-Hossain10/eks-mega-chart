@@ -8,8 +8,11 @@ merged, and actually exercised, not just written.
 
 - [x] **Automatic security scanning on push** (what-is-this.md, worked
       example Step 3: "the pipeline stops right there — nothing broken or
-      unsafe reaches a server"; also the comparison table row "Code and
-      container security scanning"). **Resolved (Day 5):** `ci.yml` now
+      unsafe reaches a server"; also the comparison table row "Container
+      image and manifest security scanning" — renamed from "Code and
+      container security scanning" during the final reconciliation pass,
+      since "code" scanning specifically doesn't exist; see the new item
+      below). **Resolved (Day 5):** `ci.yml` now
       has `trivy-config-scan` (misconfiguration scanning against the
       rendered chart) and `trivy-image-scan` (vulnerability scanning
       against a real pinned image), both gating on HIGH/CRITICAL. Both
@@ -111,3 +114,34 @@ merged, and actually exercised, not just written.
       two-person control. That was never part of "skip the scan or skip
       the approval" and stays flagged on its own in the entry above, not
       smoothed into this one.
+
+---
+
+Three new items added during the final reconciliation pass — not previously
+tracked here, caught by checking every claim in what-is-this.md against
+`git ls-files` and `NOTES.md` rather than memory:
+
+- [ ] **A service-generator script** (what-is-this.md, worked example
+      Step 1: used to say "Priya runs one script
+      (`scaffold/new-service.sh`)"). Confirmed via `git ls-files`: no
+      `scaffold/` directory exists anywhere in this repo. Step 1 now
+      describes the honest current state (copy `examples/sample-api` by
+      hand) with the script named as planned, not implied to exist.
+
+- [ ] **Application source-code scanning** (what-is-this.md, worked
+      example Step 3 and the closing pitch used to say "checks her code
+      for known security problems"). Confirmed: no SAST tool (CodeQL,
+      Semgrep, or similar) exists anywhere in `.github/workflows/`. What
+      exists — and is real — is deployment-configuration misconfiguration
+      scanning and container-image vulnerability scanning, neither of
+      which inspects application source code. Text rewritten to say this
+      explicitly rather than let "security scanning" imply more than it
+      is.
+
+- [ ] **A rollback actually exercised against a real deploy.** Step 6 and
+      the closing pitch used to say rollback "has actually been tested."
+      Checked `NOTES.md` for any record of running `helm rollback` — none
+      exists. The command is real and the chart supports it; it has never
+      been run in this project. This is the most significant of the three
+      overclaims caught in this pass, and the text now says so plainly
+      instead of implying a verification that never happened.

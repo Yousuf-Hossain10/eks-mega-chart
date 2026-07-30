@@ -1,34 +1,33 @@
 # What Is This, Actually?
 
-> **Status note (updated Day 5, close-out):** Steps 3, 4, and 5 of the
-> worked example are real, and — as of Day 5's close-out — so is the
-> closing pitch line. `ci.yml` runs Trivy misconfiguration and
-> vulnerability scans gating on HIGH/CRITICAL, each proven able to
-> actually fail before being trusted. `deploy.yml` is a reusable
-> `workflow_call` workflow with `dev`/`staging`/`prod` as separate GitHub
-> Environments, `dev` deploying automatically and `prod` gated behind a
-> required-reviewer rule — witnessed live (NOTES.md, "Witnessed on
-> 2026-07-25"). A third piece, `deploy.yml`'s own `scan-image` job, scans
-> the actual image a deploy is about to ship and `deploy`
-> `needs:` it — checked, branch protection on this repo's `master`
-> would *not* have closed this gap (it never touches a service's own
-> image), so this in-workflow link was built instead. Tested live on two
-> scratch branches, never merged: a deliberately vulnerable image made
-> `scan-image` fail and `deploy` show skipped with zero steps executed
-> (confirmed by screenshot, reproduced on a re-run); a known-clean image
-> let `scan-image` pass and `deploy` actually run, failing only
-> downstream at the AWS step. Both directions witnessed, not just
-> designed. The comparison table's "Path to production" and "Code and
-> container security scanning" rows, and the closing pitch line itself,
-> are all accurate now.
+> **Status note (final reconciliation pass):** every claim below has been
+> checked directly against the shipped repo, not against intent. Where a
+> claim didn't hold up, the text itself was rewritten to say what's
+> actually true — not left as-is with a caveat bolted on elsewhere. Real,
+> witnessed, and current: the container-image and manifest security scans
+> (`ci.yml`), the `dev`-auto/`staging`/`prod`-gated deploy pipeline
+> (`deploy.yml`, a reusable `workflow_call` workflow), the required-
+> reviewer approval gate on `prod` (watched live pausing a real run before
+> any code executed), and the `scan-image` job that blocks `deploy` from
+> even starting when a scan fails (also watched live, both directions —
+> see NOTES.md).
 >
-> **One deliberately narrower thing stays open:** self-review prevention
-> on the approval gate (a distinct setting from the gate itself) remains
-> configured but not runtime-verified — a solo maintainer structurally
-> cannot exercise a control that requires a second person. That was never
-> part of the "skip the scan or skip the approval" claim and isn't rolled
-> into this closure. See [gap-tracker.md](gap-tracker.md) for the exact,
-> current list.
+> Three things this document used to imply were done, and now says plainly
+> are not: there is no service-generator script (Step 1 describes copying
+> the one working example by hand instead); the pipeline scans deployment
+> config and container images, not application source code (Step 3, the
+> comparison table, and the closing pitch all now say this explicitly);
+> and `helm rollback` has never actually been run against a real deploy in
+> this project (Step 6 and the pitch line no longer claim it's tested).
+> All three are also tracked as open items in
+> [gap-tracker.md](gap-tracker.md).
+>
+> One more thing deliberately still open: self-review prevention on the
+> approval gate is configured but not runtime-verified — a solo maintainer
+> structurally cannot exercise a control that requires a second reviewer.
+>
+> For the story behind each thing that turned out not to be what it looked
+> like along the way, see [what-broke.md](what-broke.md).
 
 ## The problem, before any of the solution
 
@@ -160,11 +159,14 @@ she would have had to do without it.
 
 ### Step 1 — Start from the template
 
-**With this project:** Priya runs one script
-(`scaffold/new-service.sh`) and answers a few questions: service name, does
-it need a public web address, does it need a database connection. The
-script generates a new, ready-to-go folder for her service, already wired
-into the standard chart.
+**With this project, today:** Priya copies an existing example service
+(this project ships one, `examples/sample-api`) and changes two things: the
+image name and a couple of environment-specific values. She inherits the
+standard chart, the security settings, and the deploy pipeline automatically
+— none of that is hers to write. A script that generates this folder from a
+short Q&A (name, does it need a public address, does it need a database) is
+the planned next step, not built yet — copying a working example is the
+honest current state, and it already removes most of the manual work below.
 
 **Without it:** Priya either copies another team's setup and hopes it still
 applies to her, or starts from a blank folder and writes Kubernetes
@@ -186,10 +188,15 @@ make.
 
 **With this project:** Priya pushes her code to the shared code repository.
 That single push automatically triggers the pipeline (the CI/CD "inspector"):
-it checks her code for known security problems, packages it into a
-container, and checks that container against a security scanner. If
-anything critical turns up, the pipeline stops right there — nothing broken
-or unsafe reaches a server.
+it checks her deployment configuration for known misconfigurations (running
+as an all-powerful user, missing safety settings) and, at deploy time, checks
+her service's container image against a database of known security
+vulnerabilities. If anything critical turns up, the pipeline stops right
+there — nothing broken or unsafe reaches a server. **What this doesn't do
+yet:** scan Priya's actual application source code for bugs or vulnerable
+libraries (that's a different kind of scanner, not part of this pipeline
+today), or build her container image for her — she still builds and
+publishes that herself; the pipeline scans and deploys what she hands it.
 
 **Without it:** Someone has to remember to run these checks manually, if
 they exist at all. Under a deadline, they often get skipped "just this once."
@@ -208,9 +215,12 @@ commands. The service comes up already configured with:
 - Automatic health checks (the probes) so that if the service is frozen or
   broken, Kubernetes notices and stops sending it customer traffic instead
   of silently failing.
-- A defined amount of computer memory and processing power it's allowed to
-  use, so one broken service can't accidentally starve every other service
-  on the same servers.
+- A firm ceiling on memory (so one broken service can't accidentally starve
+  every other service's memory on the same server) and a guaranteed minimum
+  share of processing power under contention — deliberately not also a hard
+  ceiling on processing power, since capping that would slow the service
+  down for no safety benefit; the reasoning is written down in this
+  project's own architecture decision record.
 
 **Without it:** Someone has to remember to configure every one of those
 things, correctly, from scratch, for every single service. In practice,
@@ -232,9 +242,12 @@ has access can push whenever."
 ### Step 6 — Something goes wrong
 
 **With this project:** If the new payments service misbehaves after going
-live, anyone authorized runs one documented command — a rollback — and the
-system reverts to the exact previous version, automatically, in minutes.
-This has actually been tested, not just described in a document somewhere.
+live, anyone authorized runs one documented command — `helm rollback` — and
+the system is designed to revert to the exact previous version. **Honestly:**
+this command has not yet actually been run against a real deploy in this
+project. Every other claim in this document has a "verified" story behind
+it; this one doesn't yet, and it's flagged here instead of quietly
+overclaimed.
 
 **Without it:** Rolling back means someone manually figuring out what the
 previous version even was, then manually redeploying it by hand, hoping they
@@ -244,14 +257,14 @@ remember every setting correctly, under pressure, possibly at 2 a.m.
 
 | | With this project | Without it |
 |---|---|---|
-| Starting a new service | One script, a few questions | Copy-paste from another team, or start blank |
+| Starting a new service | Copy the working example, change two values (a generator script is planned, not built) | Copy-paste from another team, or start blank |
 | Security settings (non-root, locked-down filesystem) | Built into the standard template, always on | Depends who remembers, and how carefully |
-| Code and container security scanning | Automatic, on every push, blocks bad code | Manual, easy to skip under deadline |
+| Container image and manifest security scanning | Automatic, gates the deploy — not source-code scanning (not built yet) | Manual, easy to skip under deadline |
 | Health checks | Required, no opt-out | Optional, often forgotten |
 | Multiple servers for reliability | Standard part of the template | Whatever each team decides, if anything |
 | Auto-scaling under load | Config flag away | Reinvented per team, or absent |
 | Path to production | Automatic to test, gated approval to prod | However each team wired it, or nobody |
-| Rolling back a bad deploy | One documented, tested command | Manual, improvised, stressful |
+| Rolling back a bad deploy | One documented command (not yet exercised for real) | Manual, improvised, stressful |
 | Knowing what's running in prod, and who approved it | Logged automatically by the pipeline | Tribal knowledge, if it's known at all |
 
 The point of the contrast isn't that the manual path is impossible. A
@@ -289,8 +302,10 @@ go live.
 **A bad deploy has a dollar amount attached.** Downtime at a payments
 company doesn't just annoy users, it stops transactions from clearing,
 which is a directly measurable loss, sometimes with contractual penalties
-attached. The tested rollback path exists to make "how fast can we undo
-this" a known number, not a guess made under pressure.
+attached. The documented rollback path exists to make "how fast can we
+undo this" a known number instead of a guess made under pressure — though
+as noted above, "documented" is the honest word here; it hasn't been
+exercised against a real deploy yet.
 
 **Consistency is itself a security control.** If every service is built the
 same way, a security reviewer can review the *template* once, deeply, and
@@ -315,6 +330,20 @@ does.
 - **It does not replace a security review.** Automated scanning catches
   known, previously-catalogued problems. It does not catch a subtle logic
   flaw or a novel exploit a human reviewer might find.
+- **It does not scan application source code.** The scanning that exists
+  checks deployment configuration and container images for known
+  vulnerabilities. It does not look inside Priya's actual code the way a
+  SAST tool (like CodeQL or Semgrep) would — that's a real, named gap, not
+  a documentation oversight.
+- **Rollback is documented and implemented, not yet proven.** `helm
+  rollback` is the real command and the chart supports it, but it has not
+  been run against a real deploy in this project yet. Everything else in
+  this document has a "here's how I verified it" story; this one is
+  honestly still a claim, not a result.
+- **There is no service-generator script yet.** The scaffold script
+  described in this project's own planning docs doesn't exist. Today,
+  starting a new service means copying the one working example
+  (`examples/sample-api`) by hand.
 - **It does not run itself, unattended, without human decisions.** Someone
   still has to approve production deploys, decide on capacity, and respond
   when something breaks at 2 a.m. This project narrows what can go wrong and
@@ -335,16 +364,19 @@ security, no reliable rollback, and no real answer to 'what's running in
 production and who approved it.' I built a standard, opinionated pipeline for
 shipping software to Amazon's Kubernetes service, EKS — think of it like a
 city adopting one licensed wiring process instead of letting every homeowner
-wire their own house. A developer runs one script to scaffold a new service,
-pushes their code, and a pipeline automatically security-scans it, deploys
-it to a test environment with locked-down security settings and health
-checks built in by default, and only reaches real production after a human
-approves it. If something breaks, there's a tested one-command rollback. The
-underlying engine is a Helm chart — a reusable template for Kubernetes
+wire their own house. A developer starts from a standard template, pushes
+their code, and a pipeline automatically scans the deployment config and the
+container image for known security problems, deploys to a test environment
+with locked-down security settings and health checks built in by default,
+and only reaches real production after a human approves it — and I've
+actually watched that approval gate block a live run, not just written it.
+The underlying engine is a Helm chart — a reusable template for Kubernetes
 configuration — but the actual product is the guardrails: nobody can
 accidentally ship something that skips the security settings, skips the
 scan, or skips the approval, because the system doesn't give them a path to
-do that."
+do that. What I can't claim yet: source-code scanning, a rollback I've
+actually exercised, and a generator script for new services — all real,
+named gaps, not swept under the rug."
 
 ## Gaps I had to assume knowledge to bridge
 
